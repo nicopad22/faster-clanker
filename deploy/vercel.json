@@ -1,0 +1,4 @@
+{
+  "buildCommand": "cp ../game.js ../metadata.json ../cover.png . || true",
+  "outputDirectory": "."
+}
