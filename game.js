@@ -1,39 +1,54 @@
-// Platanus Hack 26 — Santiago Edition
-// Two-player brick duel. Dash with Button 1, break the word, keep your paddle alive.
+// Faster Clanker — Platanus Hack 26 Arcade Challenge
+// 1v1 Frantic Vibecoding Duel: Fix Syntax, AI Hallucinations & Cyber CVEs before they hit the live Demo!
 
 const GAME_WIDTH = 800;
 const GAME_HEIGHT = 600;
-const STORAGE_KEY = 'platanus-hack-26-standard-highscores';
-const MAX_HIGH_SCORES = 5;
-const WINNING_NAME_LENGTH = 3;
+const VW = 400; // Virtual pixel width (every pixel is strictly 2x2 screen pixels)
+const VH = 300; // Virtual pixel height
+const STORAGE_KEY = 'faster-clanker-scores-v1';
 
-const COLORS = {
-  background: 0x0b0f03,
-  frame: 0x3a3a0a,
-  accent: 0xe1ff00,
-  accentSoft: 0xa8c700,
-  p1: 0xe1ff00,
-  p2: 0xff6ec7,
-  red: 0xff7a7a,
-  white: 0xf7ffd8,
-  slate: 0xb8c48d,
-  cell: 0x1a1e05,
-  overlay: 0x0c0e02,
-  backdrop: 0x030504,
-  fieldBg: 0x0a0d0b,
-  brickA: 0x3f4a0e,
-  brickB: 0x6b7f14,
-  brickC: 0xa8c700,
-  brickD: 0xe1ff00,
-};
-
-const LETTER_GRID = [
-  ['A', 'B', 'C', 'D', 'E', 'F', 'G'],
-  ['H', 'I', 'J', 'K', 'L', 'M', 'N'],
-  ['O', 'P', 'Q', 'R', 'S', 'T', 'U'],
-  ['V', 'W', 'X', 'Y', 'Z', '.', '-'],
-  ['DEL', 'END'],
+// 4x6 Pixel Font (6 hex digits per ASCII char 32..126; each hex digit is a 4-bit row from top to bottom)
+const FONT_HEX = [
+  '000000','444040','AA0000','AFAAF0','7C63E4','924900','696970','440000',
+  '244420','422240','0A4A00','04E400','000048','00E000','000040','124480',
+  '699960','4C44E0','E168F0','E161E0','99F110','F8E1E0','68E960','F12440',
+  '696960','697160','040400','040480','248420','0F0F00','842480','692020',
+  '69B960','69F990','E9E9E0','788870','E999E0','F8E8F0','F8E880','78B970',
+  '99F990','E444E0','722A40','9AC990','8888F0','9FF990','9DB990','699960',
+  'E9E880','699B70','E9EA90','7861E0','E44440','999960','999660','99FF90',
+  '996990','996440','F248F0','644460','844210','622260','4A0000','0000F0',
+  '840000','617970','88E9E0','078870','117970','69F870','34E440','07971E',
+  '88E990','404460','20222C','89AC90','C44460','09F990','0E9990','069960',
+  '0E9E88','079711','068880','7861E0','4E4430','099970','099660','099F90',
+  '096690','09971E','0F24F0','326230','444440','C464C0','05A000',
 ];
+
+const C = {
+  bg: '#0b0e17',
+  ideBg: '#101420',
+  ideAlt: '#141929',
+  termBg: '#07090f',
+  demoBg: '#161c2e',
+  judgeBg: '#121624',
+  border: '#2c3654',
+  p1: '#00f5d4',
+  p1Dark: '#005c50',
+  p2: '#ff5c8a',
+  p2Dark: '#661830',
+  syn: '#ff4757',
+  synBg: '#42121b',
+  hal: '#ffa502',
+  halBg: '#3d2806',
+  cyb: '#c77dff',
+  cybBg: '#31144a',
+  ok: '#2ed573',
+  white: '#f1f2f6',
+  muted: '#6c7a9c',
+  codeKw: '#70a1ff',
+  codeStr: '#7bed9f',
+  popupBg: '#d2dae2',
+  popupBar: '#1e272e',
+};
 
 // DO NOT replace existing keys — they match the physical arcade cabinet wiring.
 // To add local testing shortcuts, append extra keys to any array.
@@ -65,486 +80,1223 @@ const CABINET_KEYS = {
 const KEYBOARD_TO_ARCADE = {};
 for (const [arcadeCode, keys] of Object.entries(CABINET_KEYS)) {
   for (const key of keys) {
-    KEYBOARD_TO_ARCADE[normalizeIncomingKey(key)] = arcadeCode;
+    KEYBOARD_TO_ARCADE[normalizeKey(key)] = arcadeCode;
   }
 }
+
+function normalizeKey(key) {
+  if (typeof key !== 'string' || !key.length) return '';
+  if (key === ' ') return 'space';
+  return key.length === 1 ? key.toLowerCase() : key;
+}
+
+const HALLUCINATIONS = [
+  'useMagicAI({ fixBugs: "pls" })',
+  'arr.sortByVibes({ fast: 99 })',
+  'if (2 + 2 === 5) return true;',
+  'const db = new QuantumSQL();',
+  'await sleep(Infinity);',
+  'React.useMiracle(winHack);',
+  'Math.PI = 4; // close enough',
+  'window.downloadMoreRAM(128);',
+  'JSON.parse("[object Object]")',
+  'return maybe ? yes : perhaps;',
+  'new BananaFactory().deploy()',
+  'llm.hallucinate("npm-ghost")',
+];
+
+const CYBER_ERRORS = [
+  'API_KEY = "sk-live-pLaTaNuS"',
+  'db.query("DROP TABLE " + req)',
+  'exec("chmod 777 / && rm -rf")',
+  'cors({ origin: "*", cred: 1 })',
+  'git.push("-f", ".env.prod")',
+  'auth = (pw) => pw.length > 0',
+  'res.send(process.env.SECRET)',
+  'crypto.seed("123456")',
+];
+
+const POPUP_TEMPLATES = [
+  { title: 'RANSOMWARE.EXE', body: 'ENCRYPTED node_modules! Pay 4 BTC', col: '#ff4757' },
+  { title: 'NPM AUDIT ALERT', body: '9,999 CRITICAL VULNERABILITIES!', col: '#ffa502' },
+  { title: 'AWS BILLING', body: '.env leaked! Balance: $84,420.69', col: '#ff4757' },
+  { title: 'CLIPPY-GPT v9', body: 'I ran git push --force to help!', col: '#70a1ff' },
+  { title: 'DOGE MINER', body: 'GPU AT 420C - MINING $CLANK...', col: '#c77dff' },
+];
+
+const JUDGE_QUIPS = {
+  ok: ['SHIP IT!', '10X DEV!', 'YC READY!', 'CLEAN AF', 'FUNDED!', 'LGTM!!'],
+  syn: ['SYNTAX?!', 'NO COMPILA', 'RED SQUIGGLE', 'LINTER CRIED', 'TYPO BRO'],
+  hal: ['WTF IS THAT', 'AI SLOP!', 'FAKE API?!', 'DELUSIONAL', 'BANANA?!'],
+  cyb: ['CVE OPEN!', '.ENV LEAK!', 'HACKABLE!', '0-DAY!!', 'RIP PROD'],
+  hack: ['PWNED!!', 'RANSOMWARE!', 'DB WIPED!', 'GG NO RE'],
+};
+
+const DEMO_FEATURES = ['+AUTH', '+DARKMODE', '+AI CHAT', '+STRIPE', '+WEB3', '+SSR', '+RUST', '+AGI'];
 
 const config = {
   type: Phaser.AUTO,
   width: GAME_WIDTH,
   height: GAME_HEIGHT,
   parent: 'game-root',
-  backgroundColor: '#0b0f03',
-  physics: {
-    default: 'arcade',
-    arcade: {
-      gravity: { y: 0 },
-      debug: false,
-    },
-  },
+  backgroundColor: C.bg,
+  pixelArt: true,
+  roundPixels: true,
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
   },
-  scene: {
-    preload,
-    create,
-    update,
-  },
+  scene: { create, update },
 };
 
 new Phaser.Game(config);
 
-function preload() {}
-
 function create() {
   const scene = this;
+  createControls(scene);
+  buildFontCache(scene);
+  buildSelfCodePool(scene);
+
+  // Create strict 400x300 virtual pixel framebuffer scaled 2x with NEAREST filtering
+  scene.vTex = scene.textures.createCanvas('vscreen', VW, VH);
+  scene.vTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+  scene.vCtx = scene.vTex.getContext();
+  scene.vCtx.imageSmoothingEnabled = false;
+  scene.add.image(0, 0, 'vscreen').setOrigin(0, 0).setScale(2);
 
   scene.state = {
-    phase: 'loading',
-    scores: { p1: 0, p2: 0 },
-    remainingBricks: 0,
+    phase: 'title', // 'title' | 'playing' | 'gameover'
+    splitX: 200,
+    targetSplitX: 200,
+    timeLeft: 90,
+    speedMult: 1,
+    sprintName: 'SPRINT 1: CHILL VIBES',
     highScores: [],
-    winner: null,
-    winnerLabel: '',
-    saveStatus: 'Loading scores...',
-    menu: { cursor: 0, cooldown: 0, lastAxis: 0 },
-    dash: {
-      p1: { activeUntil: 0, cooldownUntil: 0, dir: 0 },
-      p2: { activeUntil: 0, cooldownUntil: 0, dir: 0 },
-    },
-    nameEntry: {
-      letters: [],
-      row: 0,
-      col: 0,
-      moveCooldownUntil: 0,
-      confirmCooldownUntil: 0,
-      lastMoveVector: { x: 0, y: 0 },
-    },
+    winner: 0,
+    winReason: '',
+    nameChars: [65, 65, 65],
+    nameIdx: 0,
+    saved: false,
+    tick: 0,
+    p1: createPlayerState(1),
+    p2: createPlayerState(2),
   };
 
-  scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COLORS.background);
-  scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, 760, 560, 0x141a04, 0.94).setStrokeStyle(4, COLORS.frame, 0.8);
+  loadHighScores().then((scores) => {
+    scene.state.highScores = scores;
+  });
+}
 
-  createBackground(scene);
-  createHud(scene);
-  createPlayfield(scene);
-  createEndGameUi(scene);
-  createStartScreen(scene);
-  createLeaderboardScreen(scene);
-  createControlsScreen(scene);
-  createPauseScreen(scene);
-  createControls(scene);
-  showStartScreen(scene);
+function createPlayerState(id) {
+  return {
+    id,
+    score: 0,
+    fixed: 0,
+    leaked: 0,
+    streak: 0,
+    lines: [],
+    scrollY: 0,
+    spawnDist: 0,
+    linesSinceErr: 0,
+    nextErrGap: 2,
+    codeCursor: id === 1 ? 0 : 17,
+    vulnTimer: 0,
+    hackCombo: [],
+    hackProgress: 0,
+    popups: [],
+    judgeMood: 'neutral', // 'neutral' | 'ok' | 'bad'
+    judgeTimer: 0,
+    judgeQuip: id === 1 ? 'SHOW ME CODE' : 'DEMO TIME!',
+    demoState: 'ok', // 'ok' | 'syn' | 'hal' | 'cyb'
+    demoTimer: 0,
+    demoFeatures: ['+INIT'],
+    termLog: 'ready: clanker-v4.2 --turbo',
+    termFlash: 0,
+    termFlashCol: C.ok,
+    lastInput: '',
+  };
+}
 
-  loadHighScores()
-    .then((highScores) => {
-      scene.state.highScores = highScores;
-      scene.state.saveStatus = 'Finish a duel to save a score.';
-      refreshLeaderboard(scene);
-      refreshStartScreenLeaderboard(scene);
-    })
-    .catch(() => {
-      scene.state.highScores = [];
-      scene.state.saveStatus = 'Storage unavailable. Match runs without saves.';
-      refreshLeaderboard(scene);
-      refreshStartScreenLeaderboard(scene);
-    });
+function startMatch(scene) {
+  const st = scene.state;
+  st.phase = 'playing';
+  st.splitX = 200;
+  st.targetSplitX = 200;
+  st.timeLeft = 90;
+  st.speedMult = 1;
+  st.winner = 0;
+  st.winReason = '';
+  st.saved = false;
+  st.nameIdx = 0;
+  st.p1 = createPlayerState(1);
+  st.p2 = createPlayerState(2);
+
+  // Pre-populate initial lines in IDE
+  for (let i = 0; i < 11; i++) {
+    const y = 84 + i * 13;
+    spawnCodeLine(scene, st.p1, y, i > 4 && i % 3 === 0);
+    spawnCodeLine(scene, st.p2, y, i > 4 && i % 3 === 0);
+  }
+  playSound(scene, 'start');
+  startMusic(scene);
 }
 
 function update(time, delta) {
   const scene = this;
-  if (!scene.state) {
-    return;
-  }
+  const st = scene.state;
+  if (!st) return;
 
-  const phase = scene.state.phase;
+  const dt = Math.min(delta / 1000, 0.1);
+  st.tick += dt;
 
-  if (phase === 'start') {
-    handleStartMenu(scene, time);
-    return;
-  }
-
-  if (phase === 'leaderboard') {
-    if (consumeAnyPressedControl(scene, ['START1', 'START2', 'P1_1', 'P2_1', 'P1_2', 'P2_2'])) {
-      scene.leaderScreen.container.setVisible(false);
-      showStartScreen(scene);
+  if (st.phase === 'title') {
+    if (
+      consumePressed(scene, 'START1') ||
+      consumePressed(scene, 'START2') ||
+      consumePressed(scene, 'P1_1') ||
+      consumePressed(scene, 'P2_1')
+    ) {
+      startMatch(scene);
     }
-    return;
+  } else if (st.phase === 'playing') {
+    updateMatch(scene, dt);
+  } else if (st.phase === 'gameover') {
+    updateGameOver(scene);
   }
 
-  if (phase === 'controls') {
-    if (consumeAnyPressedControl(scene, ['START1', 'START2', 'P1_1', 'P2_1', 'P1_2', 'P2_2'])) {
-      scene.controlsScreen.container.setVisible(false);
-      showStartScreen(scene);
-    }
-    return;
+  renderScreen(scene);
+}
+
+function updateMatch(scene, dt) {
+  const st = scene.state;
+  st.timeLeft = Math.max(0, st.timeLeft - dt);
+
+  // Overcooked frantic escalation curve
+  const elapsed = 90 - st.timeLeft;
+  if (elapsed < 22) {
+    st.speedMult = 1.0 + (elapsed / 22) * 0.35;
+    st.sprintName = 'SPRINT 1: VIBECODING';
+  } else if (elapsed < 50) {
+    st.speedMult = 1.35 + ((elapsed - 22) / 28) * 0.5;
+    st.sprintName = 'SPRINT 2: CAFFEINE HIT';
+  } else if (elapsed < 72) {
+    st.speedMult = 1.85 + ((elapsed - 50) / 22) * 0.55;
+    st.sprintName = 'SPRINT 3: PROD ON FIRE';
+  } else {
+    st.speedMult = 2.4 + ((elapsed - 72) / 18) * 0.55;
+    st.sprintName = 'OVERDRIVE: 1 MIN TO DEMO!';
   }
 
-  if (phase === 'playing') {
-    updatePaddles(scene, delta, time);
-    updateBallGhostStates(scene);
-    updateBallTrails(scene, time);
-    checkBallEscape(scene);
-    if (consumeAnyPressedControl(scene, ['START1', 'START2'])) {
-      pauseMatch(scene);
-    }
-    return;
+  updatePlayer(scene, st.p1, st.p2, dt);
+  updatePlayer(scene, st.p2, st.p1, dt);
+
+  // Smoothly move splitX snapped to integer virtual pixels
+  const diff = st.targetSplitX - st.splitX;
+  if (Math.abs(diff) >= 1) {
+    st.splitX += Math.sign(diff) * Math.max(1, Math.round(Math.abs(diff) * 0.25));
+  } else {
+    st.splitX = Math.round(st.targetSplitX);
   }
 
-  if (phase === 'paused') {
-    if (consumeAnyPressedControl(scene, ['START1', 'START2'])) {
-      resumeMatch(scene);
-    }
-    return;
-  }
-
-  if (phase === 'gameover') {
-    handleNameEntry(scene, time);
-    return;
-  }
-
-  if (phase === 'saved') {
-    if (consumeAnyPressedControl(scene, ['START1', 'START2', 'P1_1', 'P2_1', 'P1_2', 'P2_2'])) {
-      returnToStart(scene);
-    }
+  // Check knockout or timer end
+  if (st.splitX <= 76) {
+    finishMatch(scene, 2, 'KO! P1 RAN OUT OF SCREEN SPACE!');
+  } else if (st.splitX >= 324) {
+    finishMatch(scene, 1, 'KO! P2 RAN OUT OF SCREEN SPACE!');
+  } else if (st.timeLeft <= 0) {
+    const w = st.splitX > 200 ? 1 : st.splitX < 200 ? 2 : st.p1.score >= st.p2.score ? 1 : 2;
+    finishMatch(scene, w, 'TIME UP! JUDGES PICKED WINNER!');
   }
 }
 
-function createBackground(scene) {
-  scene.add.rectangle(
-    GAME_WIDTH / 2,
-    GAME_HEIGHT / 2,
-    700,
-    450,
-    COLORS.fieldBg,
-    0.18,
-  );
+function updatePlayer(scene, p, rival, dt) {
+  const st = scene.state;
+  const baseSpeed = 14.5 * st.speedMult;
+
+  if (p.vulnTimer > 0) {
+    p.vulnTimer = Math.max(0, p.vulnTimer - dt);
+  }
+  if (p.judgeTimer > 0) {
+    p.judgeTimer = Math.max(0, p.judgeTimer - dt);
+    if (p.judgeTimer === 0) p.judgeMood = 'neutral';
+  }
+  if (p.demoTimer > 0) {
+    p.demoTimer = Math.max(0, p.demoTimer - dt);
+    if (p.demoTimer === 0) p.demoState = 'ok';
+  }
+  if (p.termFlash > 0) {
+    p.termFlash = Math.max(0, p.termFlash - dt);
+  }
+  for (let i = p.popups.length - 1; i >= 0; i--) {
+    p.popups[i].timer -= dt;
+    if (p.popups[i].timer <= 0) p.popups.splice(i, 1);
+  }
+
+  // Move lines upward
+  for (let i = p.lines.length - 1; i >= 0; i--) {
+    const ln = p.lines[i];
+    const mult = ln.status === 'failed' ? 3.2 : 1;
+    ln.y -= baseSpeed * mult * dt;
+
+    // Crossed top threshold into Live Demo!
+    if (ln.y <= 70) {
+      if (ln.errType && ln.status === 'active') {
+        onErrorLeakedToDemo(scene, p, rival, ln);
+      } else if (ln.errType && ln.status === 'failed') {
+        onErrorLeakedToDemo(scene, p, rival, ln);
+      }
+      p.lines.splice(i, 1);
+    }
+  }
+
+  // Spawn new lines at bottom (y = 222)
+  p.spawnDist += baseSpeed * dt;
+  while (p.spawnDist >= 13) {
+    p.spawnDist -= 13;
+    spawnCodeLine(scene, p, 222 - p.spawnDist, false);
+  }
+
+  handlePlayerInput(scene, p, rival);
 }
 
-function createHud(scene) {
-  scene.hud = {};
+function spawnCodeLine(scene, p, y, forceErr) {
+  p.linesSinceErr++;
+  const shouldErr = forceErr || p.linesSinceErr >= p.nextErrGap;
 
-  scene.hud.title = scene.add
-    .text(GAME_WIDTH / 2, 20, 'PLATANUS HACK 26 BRICKS', {
-      fontFamily: 'monospace',
-      fontSize: '22px',
-      color: '#f7fbff',
-      fontStyle: 'bold',
-      align: 'center',
-    })
-    .setOrigin(0.5, 0);
+  if (!shouldErr) {
+    const raw = scene.codePool[p.codeCursor % scene.codePool.length];
+    p.codeCursor++;
+    p.lines.push({
+      y,
+      text: raw,
+      errType: null,
+      status: 'clean',
+      combo: [],
+      progress: 0,
+      chances: 1,
+    });
+    return;
+  }
 
-  scene.hud.subtitle = scene.add
-    .text(
-      GAME_WIDTH / 2,
-      48,
-      '',
-      {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: '#a8ad8a',
-        align: 'center',
-      },
-    )
-    .setOrigin(0.5, 0);
+  p.linesSinceErr = 0;
+  // High error density that tightens as speedMult increases
+  const maxGap = scene.state.speedMult > 1.8 ? 2 : 3;
+  p.nextErrGap = Phaser.Math.Between(1, maxGap);
 
-  scene.hud.p1Score = scene.add
-    .text(65, 72, 'P1 00', {
-      fontFamily: 'monospace',
-      fontSize: '28px',
-      color: '#e1ff00',
-      fontStyle: 'bold',
-    })
-    .setOrigin(0, 0.5);
+  // Pick error type: ~58% Syntax (fast 1-2 steps), ~27% Hallucination (2-3 steps), ~15% Cyber (3-4 steps)
+  const roll = Math.random();
+  let errType = 'syn';
+  if (roll > 0.85) errType = 'cyb';
+  else if (roll > 0.58) errType = 'hal';
 
-  scene.hud.p2Score = scene.add
-    .text(GAME_WIDTH - 65, 72, 'P2 00', {
-      fontFamily: 'monospace',
-      fontSize: '28px',
-      color: '#ff6ec7',
-      fontStyle: 'bold',
-    })
-    .setOrigin(1, 0.5);
+  let text = '';
+  let combo = [];
+  let chances = 1;
 
-  scene.hud.remaining = scene.add
-    .text(GAME_WIDTH / 2, 72, 'BRICKS 000', {
-      fontFamily: 'monospace',
-      fontSize: '18px',
-      color: '#ffd84d',
-      fontStyle: 'bold',
-    })
-    .setOrigin(0.5);
+  if (errType === 'syn') {
+    const base = scene.codePool[p.codeCursor % scene.codePool.length];
+    p.codeCursor++;
+    text = mutateSyntax(base, p.codeCursor);
+    // 1 or 2 steps max for instinctive muscle memory!
+    const len = Math.random() < 0.45 ? 1 : 2;
+    combo = makeCombo(len);
+  } else if (errType === 'hal') {
+    text = HALLUCINATIONS[(p.codeCursor++) % HALLUCINATIONS.length];
+    const len = scene.state.speedMult > 1.6 && Math.random() < 0.5 ? 3 : 2;
+    combo = makeCombo(len);
+  } else {
+    text = CYBER_ERRORS[(p.codeCursor++) % CYBER_ERRORS.length];
+    combo = makeCombo(3);
+    chances = 2; // Cybersecurity gives a 2nd opportunity!
+  }
 
-  scene.hud.status = scene.add
-    .text(GAME_WIDTH / 2, GAME_HEIGHT - 24, '', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#f7fbff',
-      align: 'center',
-    })
-    .setOrigin(0.5);
-
-  scene.hud.scoreColors = {
-    p1: '#e1ff00',
-    p2: '#ff6ec7',
-    penalty: '#ff7a7a',
-  };
+  p.lines.push({
+    y,
+    text,
+    errType,
+    status: 'active', // 'active' | 'fixed' | 'failed'
+    combo,
+    progress: 0,
+    chances,
+  });
 }
 
-function createPlayfield(scene) {
-  scene.playfield = {};
-  const paddleWidth = 112;
-  const paddleHeight = 10;
-  const topBounceLineY = 118;
-  const bottomBounceLineY = GAME_HEIGHT - 72;
-  const wallThickness = 8;
-  const wallGap = 22;
-  const topPaddleY = topBounceLineY - paddleHeight / 2;
-  const bottomPaddleY = bottomBounceLineY + paddleHeight / 2;
-  const topWallY = topBounceLineY - wallGap - wallThickness / 2;
-  const bottomWallY = bottomBounceLineY + wallGap + wallThickness / 2;
+function mutateSyntax(line, seed) {
+  const muts = [
+    (s) => s.replace(/function|const|let|return/, 'functino'),
+    (s) => s.replace(/[;{}()]/g, '') + ';;;',
+    (s) => 'cosnt ' + s.slice(0, 18) + ' = ;',
+    (s) => s.slice(0, 16) + ' === = null)',
+    (s) => 'if (' + s.slice(0, 14) + ' ?? !!',
+  ];
+  return muts[seed % muts.length](line);
+}
 
-  // Walls span full width/height so corners are sealed — balls cannot escape through gaps.
-  scene.playfield.leftWall = scene.add.rectangle(38, GAME_HEIGHT / 2, 14, GAME_HEIGHT, COLORS.frame, 0);
-  scene.playfield.rightWall = scene.add.rectangle(GAME_WIDTH - 38, GAME_HEIGHT / 2, 14, GAME_HEIGHT, COLORS.frame, 0);
-  scene.playfield.topWall = scene.add.rectangle(
-    GAME_WIDTH / 2,
-    topWallY,
-    GAME_WIDTH,
-    wallThickness,
-    COLORS.frame,
-    0,
-  );
-  scene.playfield.bottomWall = scene.add.rectangle(
-    GAME_WIDTH / 2,
-    bottomWallY,
-    GAME_WIDTH,
-    wallThickness,
-    COLORS.frame,
-    0,
-  );
+function makeCombo(len) {
+  const dirs = ['U', 'D', 'L', 'R'];
+  const out = [];
+  for (let i = 0; i < len - 1; i++) {
+    out.push(dirs[Phaser.Math.Between(0, 3)]);
+  }
+  // Last step is either B1 or a direction for 1-step combos
+  out.push(len === 1 && Math.random() < 0.4 ? dirs[Phaser.Math.Between(0, 3)] : 'B1');
+  return out;
+}
 
-  scene.physics.add.existing(scene.playfield.leftWall, true);
-  scene.physics.add.existing(scene.playfield.rightWall, true);
-  scene.physics.add.existing(scene.playfield.topWall, true);
-  scene.physics.add.existing(scene.playfield.bottomWall, true);
+function makeHackCombo() {
+  const dirs = ['U', 'D', 'L', 'R'];
+  return [
+    'B2',
+    dirs[Phaser.Math.Between(0, 3)],
+    dirs[Phaser.Math.Between(0, 3)],
+  ];
+}
 
-  scene.add.rectangle(
-    GAME_WIDTH / 2,
-    topBounceLineY,
-    700,
-    1,
-    COLORS.frame,
-    0.55,
-  );
-  scene.add.rectangle(
-    GAME_WIDTH / 2,
-    bottomBounceLineY,
-    700,
-    1,
-    COLORS.frame,
-    0.55,
-  );
+function getActiveErrorLine(p) {
+  let best = null;
+  for (let i = 0; i < p.lines.length; i++) {
+    const ln = p.lines[i];
+    if (ln.errType && ln.status === 'active') {
+      if (!best || ln.y < best.y) best = ln;
+    }
+  }
+  return best;
+}
 
-  scene.playfield.p1Paddle = scene.add.rectangle(
-    GAME_WIDTH / 2,
-    topPaddleY,
-    paddleWidth,
-    paddleHeight,
-    COLORS.p1,
-    1,
-  );
-  scene.playfield.p2Paddle = scene.add.rectangle(
-    GAME_WIDTH / 2,
-    bottomPaddleY,
-    paddleWidth,
-    paddleHeight,
-    COLORS.p2,
-    1,
-  );
-
-  scene.physics.add.existing(scene.playfield.p1Paddle);
-  scene.physics.add.existing(scene.playfield.p2Paddle);
-
-  configurePaddleBody(scene.playfield.p1Paddle.body);
-  configurePaddleBody(scene.playfield.p2Paddle.body);
-
-  scene.playfield.balls = [
-    createBall(scene, GAME_WIDTH / 2 - 120, 170, COLORS.white, 'p1'),
-    createBall(scene, GAME_WIDTH / 2 + 120, GAME_HEIGHT - 170, COLORS.white, 'p2'),
+function handlePlayerInput(scene, p, rival) {
+  const prefix = p.id === 1 ? 'P1_' : 'P2_';
+  const map = [
+    ['U', prefix + 'U'],
+    ['D', prefix + 'D'],
+    ['L', prefix + 'L'],
+    ['R', prefix + 'R'],
+    ['B1', prefix + '1'],
+    ['B2', prefix + '2'],
   ];
 
-  scene.playfield.bricks = scene.physics.add.staticGroup();
-  scene.playfield.ballTrails = scene.add.group();
+  let pressedInput = null;
+  for (let i = 0; i < map.length; i++) {
+    if (consumePressed(scene, map[i][1])) {
+      pressedInput = map[i][0];
+      break;
+    }
+  }
+  if (!pressedInput) return;
 
-  for (const ball of scene.playfield.balls) {
-    scene.physics.add.collider(ball, scene.playfield.leftWall);
-    scene.physics.add.collider(ball, scene.playfield.rightWall);
-    scene.physics.add.collider(ball, scene.playfield.topWall);
-    scene.physics.add.collider(ball, scene.playfield.bottomWall);
-    scene.physics.add.collider(
-      ball,
-      scene.playfield.p1Paddle,
-      () => handleBallPaddleCollision(scene, ball, scene.playfield.p1Paddle, 'p1'),
-      () => canBallCollideWithPaddle(ball, 'p1'),
-      scene,
-    );
-    scene.physics.add.collider(
-      ball,
-      scene.playfield.p2Paddle,
-      () => handleBallPaddleCollision(scene, ball, scene.playfield.p2Paddle, 'p2'),
-      () => canBallCollideWithPaddle(ball, 'p2'),
-      scene,
-    );
-    scene.physics.add.collider(
-      ball,
-      scene.playfield.bricks,
-      (_, brick) => handleBallBrickCollision(scene, ball, brick),
-      undefined,
-      scene,
-    );
+  p.lastInput = pressedInput;
+
+  // If player has active popups from being hacked, tapping B2 shaves time off popups!
+  if (pressedInput === 'B2' && p.popups.length > 0) {
+    for (let i = 0; i < p.popups.length; i++) {
+      p.popups[i].timer -= 0.9;
+    }
+    p.termLog = 'kill -9 popup.exe';
+    playSound(scene, 'key');
+    if (rival.vulnTimer <= 0) return;
+  }
+
+  // Check if player is initiating or continuing a Hack against a vulnerable rival!
+  if (rival.vulnTimer > 0 && rival.hackCombo.length > 0) {
+    const expectedHack = rival.hackCombo[p.hackProgress];
+    if (p.hackProgress > 0 || pressedInput === 'B2') {
+      if (pressedInput === expectedHack) {
+        p.hackProgress++;
+        playSound(scene, 'key');
+        if (p.hackProgress >= rival.hackCombo.length) {
+          executeHackOnRival(scene, p, rival);
+        }
+        return;
+      } else {
+        p.hackProgress = 0;
+        if (pressedInput === 'B2') {
+          p.hackProgress = 1;
+          playSound(scene, 'key');
+          return;
+        }
+      }
+    }
+  } else {
+    p.hackProgress = 0;
+  }
+
+  // Otherwise, check active error line in player's IDE (closest to top Demo line)
+  const target = getActiveErrorLine(p);
+  if (!target) return;
+
+  const expected = target.combo[target.progress];
+  if (pressedInput === expected) {
+    target.progress++;
+    playSound(scene, 'key');
+    if (target.progress >= target.combo.length) {
+      onErrorFixed(scene, p, target);
+    }
+  } else {
+    // Mistake on combo!
+    if (target.errType === 'cyb' && target.chances > 1) {
+      target.chances--;
+      target.progress = 0;
+      p.termLog = 'CVE RETRY! 2ND CHANCE!';
+      p.termFlash = 0.35;
+      p.termFlashCol = C.hal;
+      playSound(scene, 'warn');
+    } else {
+      target.status = 'failed';
+      p.streak = 0;
+      p.termLog = 'ERR: MERGE CONFLICT!';
+      p.termFlash = 0.4;
+      p.termFlashCol = C.syn;
+      playSound(scene, 'fail');
+    }
   }
 }
 
-function createEndGameUi(scene) {
-  scene.endGame = {};
+function onErrorFixed(scene, p, ln) {
+  ln.status = 'fixed';
+  p.fixed++;
+  p.streak++;
 
-  scene.endGame.container = scene.add.container(0, 0);
-  scene.endGame.container.setDepth(20);
-  scene.endGame.container.setVisible(false);
+  const pts = ln.errType === 'cyb' ? 30 : ln.errType === 'hal' ? 20 : 10;
+  const streakBonus = p.streak >= 5 ? 4 : 0;
+  p.score += pts + streakBonus * 5;
 
-  const backdrop = scene.add.rectangle(
-    GAME_WIDTH / 2,
-    GAME_HEIGHT / 2,
-    GAME_WIDTH,
-    GAME_HEIGHT,
-    COLORS.backdrop,
-    0.98,
-  );
-  scene.endGame.container.add(backdrop);
+  // Push territory divider toward rival!
+  const push = (ln.errType === 'cyb' ? 11 : ln.errType === 'hal' ? 8 : 5) + (p.streak >= 5 ? 2 : 0);
+  const dir = p.id === 1 ? 1 : -1;
+  scene.state.targetSplitX = Phaser.Math.Clamp(scene.state.targetSplitX + dir * push, 72, 328);
 
-  scene.endGame.title = scene.add
-    .text(GAME_WIDTH / 2, 88, 'GAME OVER', {
-      fontFamily: 'monospace',
-      fontSize: '30px',
-      color: '#f7ffd8',
-      fontStyle: 'bold',
-    })
-    .setOrigin(0.5);
+  p.termFlash = 0.25;
+  p.termFlashCol = C.ok;
+  p.termLog =
+    p.streak >= 5
+      ? '10X STREAK x' + p.streak + '! git push -f'
+      : 'FIXED ' + ln.errType.toUpperCase() + ' (+' + pts + ')';
 
-  scene.endGame.summary = scene.add
-    .text(GAME_WIDTH / 2, 126, '', {
-      fontFamily: 'monospace',
-      fontSize: '22px',
-      color: '#e1ff00',
-      align: 'center',
-    })
-    .setOrigin(0.5);
+  if (p.fixed % 2 === 0 && p.demoFeatures.length < 6) {
+    p.demoFeatures.push(DEMO_FEATURES[p.fixed % DEMO_FEATURES.length]);
+  }
+  p.judgeMood = 'ok';
+  p.judgeTimer = 1.8;
+  p.judgeQuip = JUDGE_QUIPS.ok[(p.fixed + p.streak) % JUDGE_QUIPS.ok.length];
+  playSound(scene, 'fix');
+}
 
-  scene.endGame.nameLabel = scene.add
-    .text(GAME_WIDTH / 2, 172, '', {
-      fontFamily: 'monospace',
-      fontSize: '13px',
-      color: '#a8ad8a',
-      align: 'center',
-    })
-    .setOrigin(0.5);
+function onErrorLeakedToDemo(scene, p, rival, ln) {
+  p.leaked++;
+  p.streak = 0;
 
-  scene.endGame.nameValue = scene.add
-    .text(GAME_WIDTH / 2, 208, '___', {
-      fontFamily: 'monospace',
-      fontSize: '36px',
-      color: '#ff6ec7',
-      fontStyle: 'bold',
-      align: 'center',
-      letterSpacing: 10,
-    })
-    .setOrigin(0.5);
+  // Lose territory when a bug hits your live Demo!
+  const dmg = ln.errType === 'cyb' ? 10 : ln.errType === 'hal' ? 11 : 7;
+  const dir = p.id === 1 ? -1 : 1;
+  scene.state.targetSplitX = Phaser.Math.Clamp(scene.state.targetSplitX + dir * dmg, 72, 328);
 
-  scene.endGame.instructions = scene.add
-    .text(
-      GAME_WIDTH / 2,
-      242,
-      'MOVE  PICK',
-      {
-        fontFamily: 'monospace',
-        fontSize: '11px',
-        color: '#a8ad8a',
-        align: 'center',
-      },
-    )
-    .setOrigin(0.5);
+  p.demoState = ln.errType;
+  p.demoTimer = 2.8;
+  p.judgeMood = 'bad';
+  p.judgeTimer = 2.5;
+  const quips = JUDGE_QUIPS[ln.errType] || JUDGE_QUIPS.syn;
+  p.judgeQuip = quips[p.leaked % quips.length];
 
-  scene.endGame.leaderboardTitle = scene.add
-    .text(GAME_WIDTH / 2, 286, 'SCOREBOARD', {
-      fontFamily: 'monospace',
-      fontSize: '14px',
-      color: '#e1ff00',
-      fontStyle: 'bold',
-      align: 'center',
-    })
-    .setOrigin(0.5);
+  if (ln.errType === 'cyb') {
+    // Open vulnerability so rival can Hack!
+    p.vulnTimer = 12.0;
+    p.hackCombo = makeHackCombo();
+    rival.hackProgress = 0;
+    p.termLog = 'ALERT: CVE EXPOSED! VULNERABLE!';
+    rival.termLog = 'RIVAL VULNERABLE! PRESS B2!';
+    playSound(scene, 'warn');
+  } else {
+    p.termLog = 'PROD CRASH: ' + ln.errType.toUpperCase();
+    playSound(scene, 'fail');
+  }
+}
 
-  scene.endGame.gridLabels = [];
+function executeHackOnRival(scene, attacker, victim) {
+  victim.vulnTimer = 0;
+  victim.hackCombo = [];
+  attacker.hackProgress = 0;
+  attacker.score += 50;
 
-  for (let row = 0; row < LETTER_GRID.length; row += 1) {
-    const rowValues = LETTER_GRID[row];
-    const rowWidth = rowValues.length * 56;
-    for (let col = 0; col < rowValues.length; col += 1) {
-      const value = rowValues[col];
-      const cellX = GAME_WIDTH / 2 - rowWidth / 2 + 28 + col * 56;
-      const cellY = 430 + row * 28;
+  // Big territory push!
+  const dir = attacker.id === 1 ? 1 : -1;
+  scene.state.targetSplitX = Phaser.Math.Clamp(scene.state.targetSplitX + dir * 20, 72, 328);
 
-      const cell = scene.add.rectangle(cellX, cellY, value.length > 1 ? 64 : 42, 24, COLORS.cell, 0.95);
-      cell.setStrokeStyle(2, COLORS.frame, 0.8);
+  attacker.termLog = 'HACKED RIVAL! ROOT ACCESS!';
+  attacker.termFlash = 0.5;
+  attacker.termFlashCol = C.cyb;
 
-      const label = scene.add
-        .text(cellX, cellY, value, {
-          fontFamily: 'monospace',
-          fontSize: value.length > 1 ? '14px' : '18px',
-          color: '#f7fbff',
-          fontStyle: 'bold',
-          align: 'center',
-        })
-        .setOrigin(0.5);
+  victim.termLog = 'PWNED! MASH B2 TO CLOSE POPUPS!';
+  victim.termFlash = 0.7;
+  victim.termFlashCol = C.syn;
+  victim.judgeMood = 'bad';
+  victim.judgeTimer = 3.5;
+  victim.judgeQuip = JUDGE_QUIPS.hack[attacker.score % JUDGE_QUIPS.hack.length];
 
-      scene.endGame.gridLabels.push({ cell, label, row, col, value });
-      scene.endGame.container.add(cell);
-      scene.endGame.container.add(label);
+  // Spawn 3 absurd retro popups over victim's IDE
+  for (let i = 0; i < 3; i++) {
+    const tpl = POPUP_TEMPLATES[(attacker.fixed + i) % POPUP_TEMPLATES.length];
+    victim.popups.push({
+      title: tpl.title,
+      body: tpl.body,
+      col: tpl.col,
+      ox: 8 + (i % 2) * 18,
+      oy: 84 + i * 38,
+      timer: 5.5,
+    });
+  }
+  playSound(scene, 'hack');
+}
+
+function finishMatch(scene, winner, reason) {
+  const st = scene.state;
+  st.phase = 'gameover';
+  st.winner = winner;
+  st.winReason = reason;
+  st.nameChars = [65, 65, 65];
+  st.nameIdx = 0;
+  st.saved = false;
+  playSound(scene, 'start');
+}
+
+function updateGameOver(scene) {
+  const st = scene.state;
+  if (st.saved) {
+    if (
+      consumePressed(scene, 'START1') ||
+      consumePressed(scene, 'START2') ||
+      consumePressed(scene, 'P1_1') ||
+      consumePressed(scene, 'P2_1')
+    ) {
+      st.phase = 'title';
+    }
+    return;
+  }
+
+  const up = consumePressed(scene, 'P1_U') || consumePressed(scene, 'P2_U');
+  const dn = consumePressed(scene, 'P1_D') || consumePressed(scene, 'P2_D');
+  const lf = consumePressed(scene, 'P1_L') || consumePressed(scene, 'P2_L');
+  const rt = consumePressed(scene, 'P1_R') || consumePressed(scene, 'P2_R');
+  const ok =
+    consumePressed(scene, 'P1_1') ||
+    consumePressed(scene, 'P2_1') ||
+    consumePressed(scene, 'START1') ||
+    consumePressed(scene, 'START2');
+
+  if (lf) {
+    st.nameIdx = (st.nameIdx + 2) % 3;
+    playSound(scene, 'key');
+  } else if (rt) {
+    st.nameIdx = (st.nameIdx + 1) % 3;
+    playSound(scene, 'key');
+  } else if (up) {
+    st.nameChars[st.nameIdx] = st.nameChars[st.nameIdx] >= 90 ? 65 : st.nameChars[st.nameIdx] + 1;
+    playSound(scene, 'key');
+  } else if (dn) {
+    st.nameChars[st.nameIdx] = st.nameChars[st.nameIdx] <= 65 ? 90 : st.nameChars[st.nameIdx] - 1;
+    playSound(scene, 'key');
+  } else if (ok) {
+    st.saved = true;
+    const tag = String.fromCharCode(...st.nameChars);
+    const winP = st.winner === 1 ? st.p1 : st.p2;
+    saveHighScore(scene, {
+      tag,
+      winner: 'P' + st.winner,
+      score: winP.score,
+    });
+    playSound(scene, 'fix');
+  }
+}
+
+// ============================================================================
+// STRICT PIXEL-ART RENDERER (400x300 Virtual Canvas -> 800x600 Screen)
+// ============================================================================
+
+function renderScreen(scene) {
+  const ctx = scene.vCtx;
+  const st = scene.state;
+
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, VW, VH);
+
+  if (st.phase === 'title') {
+    renderTitleScreen(scene, ctx);
+  } else {
+    renderGameplay(scene, ctx);
+    if (st.phase === 'gameover') {
+      renderGameOverOverlay(scene, ctx);
     }
   }
 
-  scene.endGame.saveStatus = scene.add
-    .text(GAME_WIDTH / 2, 590, '', {
-      fontFamily: 'monospace',
-      fontSize: '11px',
-      color: '#e1ff00',
-      align: 'center',
-    })
-    .setOrigin(0.5);
-
-  scene.endGame.leaderboard = scene.add
-    .text(GAME_WIDTH / 2, 308, '', {
-      fontFamily: 'monospace',
-      fontSize: '12px',
-      color: '#f7ffd8',
-      align: 'center',
-      lineSpacing: 4,
-    })
-    .setOrigin(0.5, 0);
-
-  scene.endGame.container.add(scene.endGame.title);
-  scene.endGame.container.add(scene.endGame.summary);
-  scene.endGame.container.add(scene.endGame.nameLabel);
-  scene.endGame.container.add(scene.endGame.nameValue);
-  scene.endGame.container.add(scene.endGame.instructions);
-  scene.endGame.container.add(scene.endGame.leaderboardTitle);
-  scene.endGame.container.add(scene.endGame.leaderboard);
-  scene.endGame.container.add(scene.endGame.saveStatus);
+  scene.vTex.refresh();
 }
+
+function renderTitleScreen(scene, ctx) {
+  const st = scene.state;
+  const pulse = Math.floor(st.tick * 3) % 2 === 0;
+
+  // Grid backdrop
+  ctx.fillStyle = '#131829';
+  for (let x = 0; x < VW; x += 20) ctx.fillRect(x, 0, 1, VH);
+  for (let y = 0; y < VH; y += 20) ctx.fillRect(0, y, VW, 1);
+
+  // Top banner box
+  drawBox(ctx, 36, 14, 328, 54, '#151b2e', C.p1);
+  drawText(ctx, 'PLATANUS HACK 26 ARCADE EDITION', 110, 22, C.muted);
+  drawTextBold(ctx, 'FASTER CLANKER', 142, 34, C.p1);
+  drawText(ctx, 'YOU ARE THE AI. FIX THE VIBECODE BEFORE PROD DIES!', 68, 50, C.white);
+
+  // Error Legend Cards (3 columns)
+  drawBox(ctx, 20, 78, 114, 62, C.synBg, C.syn);
+  drawTextBold(ctx, '1. SINTAXIS', 42, 85, C.syn);
+  drawText(ctx, 'HIGH FREQUENCY', 36, 97, C.white);
+  drawText(ctx, '1-2 STEP COMBO', 36, 107, C.ok);
+  drawComboBadges(ctx, ['U', 'B1'], 0, 56, 120);
+
+  drawBox(ctx, 143, 78, 114, 62, C.halBg, C.hal);
+  drawTextBold(ctx, '2. HALUCINACION', 155, 85, C.hal);
+  drawText(ctx, 'FAKE AI APIS', 166, 97, C.white);
+  drawText(ctx, '2-3 STEP COMBO', 162, 107, C.hal);
+  drawComboBadges(ctx, ['L', 'R', 'B1'], 0, 174, 120);
+
+  drawBox(ctx, 266, 78, 114, 62, C.cybBg, C.cyb);
+  drawTextBold(ctx, '3. CIBERSEG', 290, 85, C.cyb);
+  drawText(ctx, '2 CHANCES! IF', 286, 97, C.white);
+  drawText(ctx, 'LEAKED -> HACK!', 283, 107, C.p2);
+  drawComboBadges(ctx, ['B2', 'U', 'R'], 0, 297, 120);
+
+  // Controls & Leaderboard boxes
+  drawBox(ctx, 20, 150, 174, 96, C.ideBg, C.border);
+  drawTextBold(ctx, 'ARCADE CONTROLS', 54, 158, C.p1);
+  drawText(ctx, 'P1: WASD + U(B1) I(B2)', 32, 174, C.white);
+  drawText(ctx, 'P2: ARROWS + R(B1) T(B2)', 32, 186, C.white);
+  drawText(ctx, 'B1: FINISH FIX COMBO', 32, 202, C.ok);
+  drawText(ctx, 'B2: HACK VULNERABLE RIVAL', 32, 214, C.cyb);
+  drawText(ctx, '    OR CLOSE POPUPS!', 32, 226, C.muted);
+
+  drawBox(ctx, 206, 150, 174, 96, C.ideBg, C.border);
+  drawTextBold(ctx, 'TOP CLANKERS', 252, 158, C.hal);
+  if (!st.highScores.length) {
+    drawText(ctx, 'NO SCORES YET', 258, 192, C.muted);
+  } else {
+    for (let i = 0; i < Math.min(5, st.highScores.length); i++) {
+      const e = st.highScores[i];
+      const line = `${i + 1}. ${e.tag}  ${String(e.score).padStart(4, '0')} (${e.winner})`;
+      drawText(ctx, line, 228, 174 + i * 12, i === 0 ? C.ok : C.white);
+    }
+  }
+
+  // Flashing start prompt
+  drawBox(ctx, 76, 258, 248, 28, '#192238', pulse ? C.ok : C.p1);
+  drawTextBold(
+    ctx,
+    pulse ? '>>> PRESS START OR B1 TO VIBECODE <<<' : '    PRESS START OR B1 TO VIBECODE    ',
+    92,
+    269,
+    pulse ? C.ok : C.white,
+  );
+}
+
+function renderGameplay(scene, ctx) {
+  const st = scene.state;
+  const sx = st.splitX;
+  const topH = 68;
+  const codeY = 68;
+  const codeH = 164;
+  const termY = 232;
+  const termH = 68;
+  const judgeW = 58;
+
+  // 1. TOP ROW: Judges P1 | Demo P1 | Demo P2 | Judges P2
+  renderJudgesPanel(ctx, 0, 0, judgeW, topH, st.p1, st.tick);
+  renderDemoPanel(ctx, judgeW, 0, Math.max(0, sx - judgeW), topH, st.p1, st.tick);
+  renderDemoPanel(ctx, sx, 0, Math.max(0, VW - judgeW - sx), topH, st.p2, st.tick);
+  renderJudgesPanel(ctx, VW - judgeW, 0, judgeW, topH, st.p2, st.tick);
+
+  // 2. MIDDLE ROW: Code IDE P1 | Code IDE P2
+  renderCodePanel(ctx, 0, codeY, sx, codeH, st.p1, st.tick);
+  renderCodePanel(ctx, sx, codeY, VW - sx, codeH, st.p2, st.tick);
+
+  // 3. BOTTOM ROW: Terminal P1 | Terminal P2
+  renderTerminalPanel(ctx, 0, termY, sx, termH, st.p1, st.p2, st.tick);
+  renderTerminalPanel(ctx, sx, termY, VW - sx, termH, st.p2, st.p1, st.tick);
+
+  // Borders
+  ctx.fillStyle = C.border;
+  ctx.fillRect(0, topH - 1, VW, 2);
+  ctx.fillRect(0, termY - 1, VW, 2);
+  ctx.fillRect(judgeW - 1, 0, 2, topH);
+  ctx.fillRect(VW - judgeW - 1, 0, 2, topH);
+
+  // Central dynamic Tug-of-War Divider
+  ctx.fillStyle = Math.floor(st.tick * 8) % 2 === 0 ? C.white : C.hal;
+  ctx.fillRect(sx - 1, 0, 2, VH);
+
+  // Top-center Timer & Speed Badge pinned on the divider
+  const badgeX = Phaser.Math.Clamp(sx - 34, 60, VW - 128);
+  drawBox(ctx, badgeX, 2, 68, 17, '#090c14', C.white);
+  const secs = Math.ceil(st.timeLeft);
+  const timeCol = secs <= 15 && Math.floor(st.tick * 6) % 2 === 0 ? C.syn : C.white;
+  drawTextBold(ctx, `T-${String(secs).padStart(2, '0')}s`, badgeX + 6, 6, timeCol);
+  drawText(ctx, `${st.speedMult.toFixed(1)}x`, badgeX + 42, 6, C.hal);
+}
+
+function renderJudgesPanel(ctx, x, y, w, h, p, tick) {
+  ctx.fillStyle = C.judgeBg;
+  ctx.fillRect(x, y, w, h);
+
+  const col = p.id === 1 ? C.p1 : C.p2;
+  drawText(ctx, `JUECES P${p.id}`, x + 6, y + 4, col);
+
+  // Draw 2 pixel-art Judge avatars side by side
+  const bounce = p.judgeMood !== 'neutral' && Math.floor(tick * 8) % 2 === 0 ? -1 : 0;
+  drawJudgeAvatar(ctx, x + 7, y + 15 + bounce, p.judgeMood, 0);
+  drawJudgeAvatar(ctx, x + 31, y + 15 - bounce, p.judgeMood, 1);
+
+  // Speech bubble at bottom of Judge panel
+  const qCol = p.judgeMood === 'ok' ? C.ok : p.judgeMood === 'bad' ? C.syn : C.muted;
+  drawBox(ctx, x + 3, y + 43, w - 6, 21, '#090b12', qCol);
+  drawText(ctx, p.judgeQuip.slice(0, 9), x + 6, y + 50, C.white);
+}
+
+function drawJudgeAvatar(ctx, x, y, mood, variant) {
+  // 18x22 strict pixel-art character
+  ctx.fillStyle = variant === 0 ? '#ffdbac' : '#e0ac69';
+  ctx.fillRect(x + 3, y + 4, 12, 12); // Face
+
+  // Hair / Hat
+  ctx.fillStyle = variant === 0 ? '#2f3542' : '#57606f';
+  ctx.fillRect(x + 2, y + 1, 14, 4);
+
+  if (mood === 'ok') {
+    // Cool deal-with-it sunglasses + big grin
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x + 3, y + 7, 12, 3);
+    ctx.fillStyle = C.p1;
+    ctx.fillRect(x + 5, y + 8, 2, 1);
+    ctx.fillRect(x + 11, y + 8, 2, 1);
+    ctx.fillStyle = C.ok;
+    ctx.fillRect(x + 6, y + 12, 6, 2);
+  } else if (mood === 'bad') {
+    // Angry red face + eyebrows + open mouth
+    ctx.fillStyle = '#ff6b81';
+    ctx.fillRect(x + 3, y + 4, 12, 12);
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x + 4, y + 6, 3, 1);
+    ctx.fillRect(x + 11, y + 6, 3, 1);
+    ctx.fillRect(x + 5, y + 8, 2, 2);
+    ctx.fillRect(x + 11, y + 8, 2, 2);
+    ctx.fillRect(x + 6, y + 12, 6, 3);
+  } else {
+    // Neutral eyes
+    ctx.fillStyle = '#000000';
+    ctx.fillRect(x + 5, y + 8, 2, 2);
+    ctx.fillRect(x + 11, y + 8, 2, 2);
+    ctx.fillRect(x + 7, y + 13, 4, 1);
+  }
+
+  // Suit shoulders
+  ctx.fillStyle = variant === 0 ? '#3742fa' : '#2f3542';
+  ctx.fillRect(x + 1, y + 16, 16, 6);
+}
+
+function renderDemoPanel(ctx, x, y, w, h, p, tick) {
+  if (w <= 4) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  ctx.fillStyle = p.demoState === 'syn' ? '#2b0912' : p.demoState === 'hal' ? '#2b1e06' : C.demoBg;
+  ctx.fillRect(x, y, w, h);
+
+  const col = p.id === 1 ? C.p1 : C.p2;
+  drawText(ctx, `DEMO P${p.id}: CLANKR.AI`, x + 6, y + 4, col);
+
+  // Mini browser window inside Demo
+  const bx = x + 6;
+  const by = y + 14;
+  const bw = Math.max(24, w - 12);
+  const bh = h - 18;
+  drawBox(ctx, bx, by, bw, bh, '#0b0e17', p.demoState === 'ok' ? C.border : C.syn);
+
+  if (p.demoState === 'syn') {
+    // Syntax crash in live demo
+    ctx.fillStyle = C.syn;
+    ctx.fillRect(bx + 3, by + 4, bw - 6, 10);
+    drawText(ctx, '500 SYNTAX ERROR', bx + 6, by + 6, C.white);
+    drawText(ctx, 'Unexpected token ;', bx + 6, by + 20, C.syn);
+    drawText(ctx, 'at prod.js:420:69', bx + 6, by + 30, C.muted);
+  } else if (p.demoState === 'hal') {
+    // Hallucination visual madness
+    const shift = Math.floor(Math.sin(tick * 14) * 4);
+    drawText(ctx, '[object Banana] NaN%', bx + 6 + shift, by + 6, C.hal);
+    drawText(ctx, 'margin-left: -9999px', bx + 4, by + 18, C.cyb);
+    // Floating pixel banana/duck
+    ctx.fillStyle = C.hal;
+    ctx.fillRect(bx + 14 + shift, by + 28, 12, 6);
+    ctx.fillRect(bx + 22 + shift, by + 24, 4, 6);
+    drawText(ctx, 'AI SLOP', bx + 32, by + 28, C.white);
+  } else {
+    // Healthy live demo with rising chart & feature pills
+    drawText(ctx, 'USERS: ' + (p.score * 12 + 42), bx + 5, by + 5, C.ok);
+    // Mini bar chart
+    for (let i = 0; i < 6; i++) {
+      const barH = 4 + ((i * 3 + Math.floor(tick * 4)) % 14);
+      ctx.fillStyle = i === 5 ? C.ok : col;
+      ctx.fillRect(bx + 6 + i * 8, by + 32 - barH, 5, barH);
+    }
+    // Feature badges
+    for (let i = 0; i < Math.min(3, p.demoFeatures.length); i++) {
+      const feat = p.demoFeatures[p.demoFeatures.length - 1 - i];
+      drawText(ctx, feat, bx + 60, by + 6 + i * 10, C.codeStr);
+    }
+  }
+
+  // Vulnerability indicator in Demo if exposed
+  if (p.vulnTimer > 0 && Math.floor(tick * 8) % 2 === 0) {
+    ctx.fillStyle = C.cybBg;
+    ctx.fillRect(bx + 2, by + bh - 12, bw - 4, 10);
+    drawText(ctx, 'CVE OPEN: ' + Math.ceil(p.vulnTimer) + 's', bx + 5, by + bh - 10, C.cyb);
+  }
+
+  ctx.restore();
+}
+
+function renderCodePanel(ctx, x, y, w, h, p, tick) {
+  if (w <= 4) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  ctx.fillStyle = C.ideBg;
+  ctx.fillRect(x, y, w, h);
+
+  // Danger Prod Deploy Zone at top of IDE
+  ctx.fillStyle = '#290d16';
+  ctx.fillRect(x, y, w, 12);
+  drawText(ctx, '^^^ LIVE PROD DEPLOY LINE ^^^', x + 8, y + 3, C.syn);
+
+  const activeErr = getActiveErrorLine(p);
+
+  for (let i = 0; i < p.lines.length; i++) {
+    const ln = p.lines[i];
+    const ly = Math.round(ln.y);
+    if (ly < y + 10 || ly > y + h - 6) continue;
+
+    const isTarget = ln === activeErr;
+
+    if (ln.errType && ln.status === 'active') {
+      const bgCol = ln.errType === 'syn' ? C.synBg : ln.errType === 'hal' ? C.halBg : C.cybBg;
+      const fgCol = ln.errType === 'syn' ? C.syn : ln.errType === 'hal' ? C.hal : C.cyb;
+
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(x + 2, ly - 2, w - 4, 12);
+
+      if (isTarget) {
+        const bCol = Math.floor(tick * 10) % 2 === 0 ? C.white : fgCol;
+        drawBox(ctx, x + 2, ly - 2, w - 4, 12, bgCol, bCol);
+      }
+
+      // Left type tag
+      const tag = ln.errType === 'syn' ? 'SYN' : ln.errType === 'hal' ? 'HAL' : 'CYB';
+      ctx.fillStyle = fgCol;
+      ctx.fillRect(x + 4, ly, 17, 8);
+      drawText(ctx, tag, x + 5, ly + 1, '#000000');
+
+      // Code text
+      drawText(ctx, ln.text, x + 24, ly + 1, C.white);
+
+      // Inline Combo Badges on the right side of the line
+      const comboW = ln.combo.length * 13 + 4;
+      const cx = Math.max(x + 24, x + w - comboW - 4);
+      ctx.fillStyle = '#07090f';
+      ctx.fillRect(cx - 2, ly - 1, comboW, 10);
+      drawComboBadges(ctx, ln.combo, ln.progress, cx, ly);
+    } else if (ln.status === 'fixed') {
+      ctx.fillStyle = '#0e291a';
+      ctx.fillRect(x + 2, ly - 1, w - 4, 10);
+      drawText(ctx, '// FIXED: ' + ln.text, x + 6, ly + 1, C.ok);
+    } else if (ln.status === 'failed') {
+      ctx.fillStyle = '#4a0e17';
+      ctx.fillRect(x + 2, ly - 1, w - 4, 10);
+      drawText(ctx, '!! LEAKING: ' + ln.text, x + 6, ly + 1, C.syn);
+    } else {
+      // Clean self-referential JS code line
+      const col = ln.text.startsWith('//')
+        ? C.codeStr
+        : ln.text.includes('function') || ln.text.includes('const') || ln.text.includes('if')
+          ? C.codeKw
+          : C.muted;
+      drawText(ctx, ln.text, x + 6, ly + 1, col);
+    }
+  }
+
+  // Render absurd Cyber Hack Popups over victim's IDE!
+  for (let i = 0; i < p.popups.length; i++) {
+    const pop = p.popups[i];
+    const jx = Math.floor(Math.sin(tick * 22 + i) * 2);
+    const px = x + Math.min(pop.ox, Math.max(4, w - 144)) + jx;
+    const py = pop.oy;
+    const pw = Math.min(140, w - 8);
+    const ph = 32;
+
+    drawBox(ctx, px, py, pw, ph, C.popupBg, pop.col);
+    ctx.fillStyle = pop.col;
+    ctx.fillRect(px, py, pw, 9);
+    drawText(ctx, pop.title, px + 4, py + 2, C.white);
+    drawText(ctx, '[X]', px + pw - 16, py + 2, C.white);
+    drawText(ctx, pop.body, px + 4, py + 13, '#0b0e17');
+    drawText(ctx, 'MASH B2 TO KILL PROCESS!', px + 4, py + 22, '#b33939');
+  }
+
+  ctx.restore();
+}
+
+function renderTerminalPanel(ctx, x, y, w, h, p, rival, tick) {
+  if (w <= 4) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+
+  ctx.fillStyle = p.termFlash > 0 ? '#182436' : C.termBg;
+  ctx.fillRect(x, y, w, h);
+
+  const pCol = p.id === 1 ? C.p1 : C.p2;
+  const pct = Math.round(((p.id === 1 ? sceneWidthShare(p.id, w) : w) / VW) * 100);
+  drawText(
+    ctx,
+    `P${p.id} SCORE:${String(p.score).padStart(4, '0')}  SPACE:${pct}%  STREAK:${p.streak}`,
+    x + 6,
+    y + 4,
+    pCol,
+  );
+
+  // Priority 1: If Rival is Vulnerable, show neon HACK RIVAL prompt!
+  if (rival.vulnTimer > 0 && rival.hackCombo.length > 0) {
+    const pulse = Math.floor(tick * 10) % 2 === 0;
+    drawBox(ctx, x + 4, y + 14, w - 8, 22, C.cybBg, pulse ? C.white : C.cyb);
+    drawTextBold(ctx, 'HACK RIVAL:', x + 8, y + 22, C.cyb);
+    drawComboBadges(ctx, rival.hackCombo, p.hackProgress, x + 76, y + 21);
+  } else {
+    // Priority 2: Show active target error combo clearly in Terminal
+    const activeErr = getActiveErrorLine(p);
+    if (activeErr) {
+      const eCol =
+        activeErr.errType === 'syn' ? C.syn : activeErr.errType === 'hal' ? C.hal : C.cyb;
+      const label =
+        activeErr.errType === 'syn'
+          ? 'FIX SINTAXIS:'
+          : activeErr.errType === 'hal'
+            ? 'FIX HALUCIN:'
+            : `FIX CVE (${activeErr.chances}x):`;
+      drawBox(ctx, x + 4, y + 14, w - 8, 22, '#111625', eCol);
+      drawTextBold(ctx, label, x + 8, y + 22, eCol);
+      drawComboBadges(ctx, activeErr.combo, activeErr.progress, x + 84, y + 21);
+    } else {
+      drawBox(ctx, x + 4, y + 14, w - 8, 22, '#0d111c', C.border);
+      drawText(ctx, 'STATUS: ALL CHECKS PASSING...', x + 8, y + 22, C.ok);
+    }
+  }
+
+  // Terminal console log line at bottom
+  const logCol = p.termFlash > 0 ? p.termFlashCol : C.muted;
+  drawText(ctx, `$ ${p.termLog}`, x + 6, y + 42, logCol);
+  drawText(
+    ctx,
+    p.vulnTimer > 0 ? `!! CVE OPEN (${Math.ceil(p.vulnTimer)}s) !!` : `FIXED:${p.fixed} LEAK:${p.leaked}`,
+    x + 6,
+    y + 54,
+    p.vulnTimer > 0 ? C.syn : C.muted,
+  );
+
+  ctx.restore();
+}
+
+function sceneWidthShare(id, w) {
+  return w;
+}
+
+function renderGameOverOverlay(scene, ctx) {
+  const st = scene.state;
+  ctx.fillStyle = 'rgba(7, 9, 15, 0.86)';
+  ctx.fillRect(0, 0, VW, VH);
+
+  const wCol = st.winner === 1 ? C.p1 : C.p2;
+  drawBox(ctx, 54, 38, 292, 224, '#101524', wCol);
+
+  drawTextBold(ctx, `PLAYER ${st.winner} WINS THE HACKATHON!`, 104, 54, wCol);
+  drawText(ctx, st.winReason, 86, 72, C.white);
+
+  drawText(
+    ctx,
+    `P1 SCORE: ${st.p1.score} (FIXED ${st.p1.fixed})   P2 SCORE: ${st.p2.score} (FIXED ${st.p2.fixed})`,
+    72,
+    94,
+    C.muted,
+  );
+
+  // 3-letter Arcade Tag Entry
+  drawTextBold(ctx, 'ENTER WINNER TAG:', 146, 120, C.hal);
+  for (let i = 0; i < 3; i++) {
+    const cx = 162 + i * 28;
+    const cy = 136;
+    const active = !st.saved && st.nameIdx === i;
+    drawBox(ctx, cx, cy, 20, 24, '#080b12', active ? C.ok : C.border);
+    drawTextBold(ctx, String.fromCharCode(st.nameChars[i]), cx + 7, cy + 9, active ? C.ok : C.white);
+  }
+
+  if (!st.saved) {
+    drawText(ctx, 'JOYSTICK TO CHANGE LETTERS, B1/START TO SAVE', 84, 174, C.white);
+  } else {
+    drawTextBold(ctx, 'SCORE SAVED! PRESS START FOR REMATCH', 86, 174, C.ok);
+  }
+
+  // Mini leaderboard
+  drawText(ctx, 'HIGH SCORES:', 168, 198, C.p1);
+  for (let i = 0; i < Math.min(3, st.highScores.length); i++) {
+    const e = st.highScores[i];
+    drawText(
+      ctx,
+      `${i + 1}. ${e.tag} - ${e.score} PTS (${e.winner})`,
+      138,
+      212 + i * 11,
+      C.white,
+    );
+  }
+}
+
+// ============================================================================
+// PIXEL FONT, COMBO BADGES & SELF-REFERENTIAL CODE POOL
+// ============================================================================
+
+function drawComboBadges(ctx, combo, progress, x, y) {
+  for (let i = 0; i < combo.length; i++) {
+    const step = combo[i];
+    const bx = x + i * 13;
+    const done = i < progress;
+    const isNext = i === progress;
+
+    const bg = done ? C.ok : step === 'B1' ? '#1e90ff' : step === 'B2' ? C.cyb : '#2f3542';
+    const border = isNext ? C.white : done ? C.ok : C.border;
+    ctx.fillStyle = bg;
+    ctx.fillRect(bx, y, 11, 8);
+    ctx.fillStyle = border;
+    ctx.fillRect(bx, y, 11, 1);
+
+    const fg = done ? '#000000' : C.white;
+    if (step === 'U') drawArrowGlyph(ctx, bx + 3, y + 2, 0, fg);
+    else if (step === 'D') drawArrowGlyph(ctx, bx + 3, y + 2, 1, fg);
+    else if (step === 'L') drawArrowGlyph(ctx, bx + 3, y + 2, 2, fg);
+    else if (step === 'R') drawArrowGlyph(ctx, bx + 3, y + 2, 3, fg);
+    else drawText(ctx, step, bx + 1, y + 1, fg);
+  }
+}
+
+function drawArrowGlyph(ctx, x, y, dir, col) {
+  ctx.fillStyle = col;
+  // 5x5 crisp pixel arrow
+  const maps = [
+    ['00100', '01110', '10101', '00100', '00100'], // U
+    ['00100', '00100', '10101', '01110', '00100'], // D
+    ['00100', '01000', '11111', '01000', '00100'], // L
+    ['00100', '00010', '11111', '00010', '00100'], // R
+  ];
+  const m = maps[dir];
+  for (let r = 0; r < 5; r++) {
+    for (let c = 0; c < 5; c++) {
+      if (m[r][c] === '1') ctx.fillRect(x + c, y + r, 1, 1);
+    }
+  }
+}
+
+function drawBox(ctx, x, y, w, h, bg, borderCol) {
+  ctx.fillStyle = bg;
+  ctx.fillRect(x, y, w, h);
+  ctx.fillStyle = borderCol;
+  ctx.fillRect(x, y, w, 1);
+  ctx.fillRect(x, y + h - 1, w, 1);
+  ctx.fillRect(x, y, 1, h);
+  ctx.fillRect(x + w - 1, y, 1, h);
+}
+
+function buildFontCache(scene) {
+  // Decode 4x6 bitmaps once for ultra-fast integer pixel rendering
+  scene.glyphs = FONT_HEX.map((hex) => {
+    const coords = [];
+    for (let r = 0; r < 6; r++) {
+      const nib = parseInt(hex[r], 16);
+      for (let c = 0; c < 4; c++) {
+        if ((nib >> (3 - c)) & 1) coords.push([c, r]);
+      }
+    }
+    return coords;
+  });
+}
+
+function drawText(ctx, str, x, y, color) {
+  if (!str) return;
+  ctx.fillStyle = color;
+  const glyphs = window._fcGlyphs;
+  let cx = x | 0;
+  const cy = y | 0;
+  for (let i = 0; i < str.length; i++) {
+    const code = str.charCodeAt(i) - 32;
+    const g = glyphs[code];
+    if (g) {
+      for (let j = 0; j < g.length; j++) {
+        ctx.fillRect(cx + g[j][0], cy + g[j][1], 1, 1);
+      }
+    }
+    cx += 5;
+  }
+}
+
+function drawTextBold(ctx, str, x, y, color) {
+  drawText(ctx, str, x, y, '#000000');
+  drawText(ctx, str, x, y - 1, color);
+}
+
+function buildSelfCodePool(scene) {
+  window._fcGlyphs = scene.glyphs;
+  // Extract our own source code functions at runtime!
+  const fns = [
+    updateMatch,
+    updatePlayer,
+    spawnCodeLine,
+    handlePlayerInput,
+    onErrorFixed,
+    executeHackOnRival,
+    renderGameplay,
+  ];
+  const rawLines = [];
+  const jokes = [
+    '// TODO: ask Claude why this works',
+    '// DO NOT TOUCH OR DEMO EXPLODES',
+    'console.log("LLEGO AQUI 12345");',
+    '// vibecoded at 4:12 AM on Mate',
+    'const aiConfidence = 999.9;',
+  ];
+  for (let i = 0; i < fns.length; i++) {
+    const lines = fns[i].toString().split('\n');
+    for (let j = 0; j < lines.length; j++) {
+      const t = lines[j].trim();
+      if (t.length >= 6) {
+        rawLines.push(t.slice(0, 48));
+        if (rawLines.length % 7 === 0) {
+          rawLines.push(jokes[Math.floor(rawLines.length / 7) % jokes.length]);
+        }
+      }
+    }
+  }
+  scene.codePool = rawLines;
+}
+
+// ============================================================================
+// CONTROLS, 8-BIT SYNTH & STORAGE
+// ============================================================================
 
 function createControls(scene) {
   scene.controls = {
@@ -553,1173 +1305,163 @@ function createControls(scene) {
   };
 
   const onKeyDown = (event) => {
-    const key = normalizeIncomingKey(event.key);
-    if (!key) {
-      return;
+    const code = KEYBOARD_TO_ARCADE[normalizeKey(event.key)];
+    if (!code) return;
+    if (!scene.controls.held[code]) {
+      scene.controls.pressed[code] = true;
     }
-
-    const arcadeCode = KEYBOARD_TO_ARCADE[key];
-    if (!arcadeCode) {
-      return;
-    }
-
-    if (!scene.controls.held[arcadeCode]) {
-      scene.controls.pressed[arcadeCode] = true;
-    }
-    scene.controls.held[arcadeCode] = true;
+    scene.controls.held[code] = true;
   };
 
   const onKeyUp = (event) => {
-    const key = normalizeIncomingKey(event.key);
-    if (!key) {
-      return;
-    }
-
-    const arcadeCode = KEYBOARD_TO_ARCADE[key];
-    if (!arcadeCode) {
-      return;
-    }
-
-    scene.controls.held[arcadeCode] = false;
+    const code = KEYBOARD_TO_ARCADE[normalizeKey(event.key)];
+    if (!code) return;
+    scene.controls.held[code] = false;
   };
 
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
-
   scene.events.once('shutdown', () => {
     window.removeEventListener('keydown', onKeyDown);
     window.removeEventListener('keyup', onKeyUp);
   });
 }
 
-function startMatch(scene) {
-  scene.physics.resume();
-  scene.startScreen.container.setVisible(false);
-  buildTextBricks(scene);
-  resetBalls(scene);
-  scene.state.scores = { p1: 0, p2: 0 };
-  refreshHud(scene);
-  scene.state.phase = 'playing';
-  scene.hud.status.setText('');
-}
-
-function createStartScreen(scene) {
-  scene.startScreen = {};
-  const c = scene.add.container(0, 0);
-  c.setDepth(15);
-  scene.startScreen.container = c;
-
-  c.add(scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COLORS.overlay, 0.97));
-
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, 88, 'PLATANUS HACK 26', {
-        fontFamily: 'monospace', fontSize: '16px', color: '#a8c700',
-      })
-      .setOrigin(0.5),
-  );
-  const titleMain = scene.add
-    .text(GAME_WIDTH / 2, 150, 'SANTIAGO EDITION', {
-      fontFamily: 'monospace', fontSize: '38px', color: '#e1ff00', fontStyle: 'bold',
-    })
-    .setOrigin(0.5);
-  c.add(titleMain);
-  scene.tweens.add({
-    targets: titleMain,
-    scale: 1.025,
-    alpha: 0.88,
-    duration: 1100,
-    yoyo: true,
-    repeat: -1,
-    ease: 'Sine.easeInOut',
-  });
-
-  scene.startScreen.buttons = [];
-  const buttonLabels = ['PLAY', 'LEADERBOARD', 'CONTROLS'];
-  for (let i = 0; i < buttonLabels.length; i += 1) {
-    const y = 232 + i * 50;
-    const bg = scene.add.rectangle(GAME_WIDTH / 2, y, 280, 42, COLORS.cell, 0.95);
-    bg.setStrokeStyle(2, COLORS.frame, 0.8);
-    const label = scene.add
-      .text(GAME_WIDTH / 2, y, buttonLabels[i], {
-        fontFamily: 'monospace', fontSize: '22px', color: '#f7ffd8', fontStyle: 'bold',
-      })
-      .setOrigin(0.5);
-    c.add(bg);
-    c.add(label);
-    scene.startScreen.buttons.push({ bg, label });
+function consumePressed(scene, code) {
+  if (scene.controls.pressed[code]) {
+    scene.controls.pressed[code] = false;
+    return true;
   }
-
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, 380, 'SCOREBOARD', {
-        fontFamily: 'monospace', fontSize: '14px', color: '#e1ff00', fontStyle: 'bold',
-      })
-      .setOrigin(0.5),
-  );
-  scene.startScreen.leaderboard = scene.add
-    .text(GAME_WIDTH / 2, 402, '', {
-      fontFamily: 'monospace', fontSize: '13px', color: '#f7ffd8', align: 'center', lineSpacing: 4,
-    })
-    .setOrigin(0.5, 0);
-  c.add(scene.startScreen.leaderboard);
-
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 22, 'MOVE ↕   CONFIRM B / START', {
-        fontFamily: 'monospace', fontSize: '11px', color: '#6f7a4a',
-      })
-      .setOrigin(0.5),
-  );
-
-  c.setVisible(false);
+  return false;
 }
 
-function showStartScreen(scene) {
-  scene.state.phase = 'start';
-  scene.state.menu = { cursor: 0, cooldown: 0, lastAxis: 0 };
-  refreshStartScreenLeaderboard(scene);
-  updateStartMenuHighlight(scene);
-  scene.startScreen.container.setVisible(true);
-}
-
-function createLeaderboardScreen(scene) {
-  scene.leaderScreen = {};
-  const c = scene.add.container(0, 0);
-  c.setDepth(16);
-  scene.leaderScreen.container = c;
-
-  c.add(scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COLORS.overlay, 0.98));
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, 90, 'LEADERBOARD', {
-        fontFamily: 'monospace', fontSize: '30px', color: '#e1ff00', fontStyle: 'bold',
-      })
-      .setOrigin(0.5),
-  );
-
-  scene.leaderScreen.list = scene.add
-    .text(GAME_WIDTH / 2, 160, '', {
-      fontFamily: 'monospace', fontSize: '20px', color: '#f7ffd8',
-      align: 'center', lineSpacing: 12,
-    })
-    .setOrigin(0.5, 0);
-  c.add(scene.leaderScreen.list);
-
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 28, 'PRESS START TO GO BACK', {
-        fontFamily: 'monospace', fontSize: '12px', color: '#6f7a4a',
-      })
-      .setOrigin(0.5),
-  );
-
-  c.setVisible(false);
-}
-
-function createControlsScreen(scene) {
-  scene.controlsScreen = {};
-  const c = scene.add.container(0, 0);
-  c.setDepth(16);
-  scene.controlsScreen.container = c;
-
-  c.add(scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COLORS.overlay, 0.98));
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, 110, 'CONTROLS', {
-        fontFamily: 'monospace', fontSize: '30px', color: '#e1ff00', fontStyle: 'bold',
-      })
-      .setOrigin(0.5),
-  );
-
-  const lines = [
-    'P1   MOVE  A / D',
-    'P1   DASH  U',
-    '',
-    'P2   MOVE  ← / →',
-    'P2   DASH  R',
-    '',
-    'PAUSE      ENTER',
-  ];
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, 200, lines.join('\n'), {
-        fontFamily: 'monospace', fontSize: '18px', color: '#f7ffd8',
-        align: 'center', lineSpacing: 8,
-      })
-      .setOrigin(0.5, 0),
-  );
-
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT - 28, 'PRESS START TO GO BACK', {
-        fontFamily: 'monospace', fontSize: '12px', color: '#6f7a4a',
-      })
-      .setOrigin(0.5),
-  );
-
-  c.setVisible(false);
-}
-
-function showControlsScreen(scene) {
-  scene.startScreen.container.setVisible(false);
-  scene.controlsScreen.container.setVisible(true);
-  scene.state.phase = 'controls';
-}
-
-function showLeaderboardScreen(scene) {
-  const lines = scene.state.highScores.length
-    ? scene.state.highScores.map((e, i) =>
-        `${String(i + 1).padStart(2, '0')}  ${e.name.padEnd(3, ' ')}  ${String(e.score).padStart(3, ' ')}  ${e.winner}`,
-      )
-    : ['NO SAVED SCORES YET'];
-  scene.leaderScreen.list.setText(lines.join('\n'));
-  scene.startScreen.container.setVisible(false);
-  scene.leaderScreen.container.setVisible(true);
-  scene.state.phase = 'leaderboard';
-}
-
-function refreshStartScreenLeaderboard(scene) {
-  const lines = scene.state.highScores.length
-    ? scene.state.highScores.map((e, i) =>
-        `${String(i + 1).padStart(2, '0')} ${e.name.padEnd(3, ' ')} ${String(e.score).padStart(2, '0')} ${e.winner}`,
-      )
-    : ['NO SAVED SCORES YET'];
-  scene.startScreen.leaderboard.setText(lines.join('\n'));
-}
-
-function updateStartMenuHighlight(scene) {
-  const cursor = scene.state.menu.cursor;
-  scene.startScreen.buttons.forEach(({ bg, label }, i) => {
-    const active = i === cursor;
-    bg.setFillStyle(active ? COLORS.accent : COLORS.cell, active ? 1 : 0.95);
-    bg.setStrokeStyle(2, active ? COLORS.white : COLORS.frame, active ? 1 : 0.8);
-    label.setColor(active ? '#04110b' : '#f7ffd8');
-  });
-}
-
-function handleStartMenu(scene, time) {
-  const menu = scene.state.menu;
-  const axisY = getVerticalMenuAxis(scene.controls);
-
-  if (time >= menu.cooldown && axisY !== 0 && menu.lastAxis !== axisY) {
-    menu.cursor = Phaser.Math.Wrap(menu.cursor + axisY, 0, scene.startScreen.buttons.length);
-    menu.cooldown = time + 160;
-    updateStartMenuHighlight(scene);
-    playSound(scene, 'click');
-  }
-  if (axisY === 0) {
-    menu.lastAxis = 0;
-  } else {
-    menu.lastAxis = axisY;
-  }
-
-  if (consumeAnyPressedControl(scene, ['P1_1', 'P2_1', 'P1_2', 'P2_2', 'START1', 'START2'])) {
-    playSound(scene, 'select');
-    startAmbientMusic(scene);
-    if (menu.cursor === 0) {
-      startMatch(scene);
-    } else if (menu.cursor === 1) {
-      showLeaderboardScreen(scene);
-    } else {
-      showControlsScreen(scene);
-    }
-  }
-}
-
-function createPauseScreen(scene) {
-  scene.pauseScreen = {};
-  const c = scene.add.container(0, 0);
-  c.setDepth(25);
-  scene.pauseScreen.container = c;
-
-  c.add(scene.add.rectangle(GAME_WIDTH / 2, GAME_HEIGHT / 2, GAME_WIDTH, GAME_HEIGHT, COLORS.overlay, 0.82));
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 - 28, 'PAUSED', {
-        fontFamily: 'monospace', fontSize: '52px', color: '#e1ff00', fontStyle: 'bold',
-      })
-      .setOrigin(0.5),
-  );
-  c.add(
-    scene.add
-      .text(GAME_WIDTH / 2, GAME_HEIGHT / 2 + 34, 'PRESS START TO RESUME', {
-        fontFamily: 'monospace', fontSize: '16px', color: '#a8ad8a',
-      })
-      .setOrigin(0.5),
-  );
-
-  c.setVisible(false);
-}
-
-function pauseMatch(scene) {
-  scene.state.phase = 'paused';
-  scene.physics.pause();
-  scene.pauseScreen.container.setVisible(true);
-}
-
-function resumeMatch(scene) {
-  scene.pauseScreen.container.setVisible(false);
-  scene.physics.resume();
-  scene.state.phase = 'playing';
-}
-
-function returnToStart(scene) {
-  scene.state.winner = null;
-  scene.state.nameEntry.letters = [];
-  scene.endGame.container.setVisible(false);
-  refreshLeaderboard(scene);
-  showStartScreen(scene);
-}
-
-function configurePaddleBody(body) {
-  body.setImmovable(true);
-  body.allowGravity = false;
-  body.setCollideWorldBounds(false);
-}
-
-function createBall(scene, x, y, color, startingOwner) {
-  const ball = scene.add.circle(x, y, 7, color, 1);
-  scene.physics.add.existing(ball);
-
-  ball.body.setCircle(7);
-  ball.body.setBounce(1, 1);
-  ball.body.setCollideWorldBounds(false);
-  ball.body.setAllowGravity(false);
-  ball.body.setDrag(0, 0);
-  ball.body.setMaxVelocity(340, 340);
-  ball.glowColor = color;
-  ball.lastTouchedBy = startingOwner;
-  ball.ghostFor = { p1: false, p2: false };
-  ball.previousY = y;
-
-  return ball;
-}
-
-function buildTextBricks(scene) {
-  scene.playfield.bricks.clear(true, true);
-
-  // SANTIAGO in a 4×7 pixel font, centered across the cabinet playfield. Eight letters
-  // need 39 columns (4 each plus a gap): at 17 px a column they span 663 px, inside the
-  // same 680 px field the 20 px columns of shorter words used.
-  const WORD = 'SANTIAGO';
-  const CELL = 17;
-  const letters = {
-    S: ['0111', '1000', '1000', '0110', '0001', '0001', '1110'],
-    A: ['0110', '1001', '1001', '1111', '1001', '1001', '1001'],
-    N: ['1001', '1101', '1101', '1011', '1011', '1001', '1001'],
-    T: ['1111', '0110', '0110', '0110', '0110', '0110', '0110'],
-    I: ['1111', '0110', '0110', '0110', '0110', '0110', '1111'],
-    G: ['0111', '1000', '1000', '1011', '1001', '1001', '0111'],
-    O: ['0110', '1001', '1001', '1001', '1001', '1001', '0110'],
-  };
-  const columns = WORD.length * 5 - 1;
-  const left = GAME_WIDTH / 2 - (columns * CELL) / 2 + CELL / 2;
-  const brickData = [];
-  for (let letter = 0; letter < WORD.length; letter++) {
-    const pixels = letters[WORD[letter]];
-    for (let row = 0; row < 7; row++) {
-      for (let col = 0; col < 4; col++) {
-        if (pixels[row][col] === '1') {
-          brickData.push([left + (letter * 5 + col) * CELL, 257 + row * 12, (letter + row + col) % 4]);
-        }
-      }
-    }
-  }
-
-  const colors = [COLORS.brickA, COLORS.brickB, COLORS.brickC, COLORS.brickD];
-
-  for (const [bx, by, ci] of brickData) {
-    const brick = scene.add.rectangle(bx, by, CELL - 2, 10, colors[ci], 1);
-    brick.setStrokeStyle(1, COLORS.cell, 0.7);
-    scene.physics.add.existing(brick, true);
-    scene.playfield.bricks.add(brick);
-  }
-
-  scene.state.remainingBricks = scene.playfield.bricks.countActive(true);
-}
-
-function resetBalls(scene) {
-  const [topBall, bottomBall] = scene.playfield.balls;
-
-  topBall.setPosition(GAME_WIDTH / 2 - 110, 170);
-  bottomBall.setPosition(GAME_WIDTH / 2 + 110, GAME_HEIGHT - 170);
-
-  topBall.lastTouchedBy = 'p1';
-  bottomBall.lastTouchedBy = 'p2';
-  topBall.ghostFor = { p1: false, p2: false };
-  bottomBall.ghostFor = { p1: false, p2: false };
-  topBall.previousY = topBall.y;
-  bottomBall.previousY = bottomBall.y;
-  topBall.setAlpha(1);
-  bottomBall.setAlpha(1);
-
-  topBall.body.setVelocity(190, 210);
-  bottomBall.body.setVelocity(-190, -210);
-}
-
-function updatePaddles(scene, delta, time) {
-  const paddleSpeed = 320;
-  const dashSpeed = 1500;
-  const dashDuration = 110;
-  const dashCooldown = 750;
-  const p1Body = scene.playfield.p1Paddle.body;
-  const p2Body = scene.playfield.p2Paddle.body;
-  const deltaSeconds = delta / 1000;
-
-  let p1Dir = 0;
-  if (isControlHeld(scene, 'P1_L')) p1Dir -= 1;
-  if (isControlHeld(scene, 'P1_R')) p1Dir += 1;
-
-  let p2Dir = 0;
-  if (isControlHeld(scene, 'P2_L')) p2Dir -= 1;
-  if (isControlHeld(scene, 'P2_R')) p2Dir += 1;
-
-  tryStartDash(scene, 'p1', 'P1_1', p1Dir, time, dashDuration, dashCooldown);
-  tryStartDash(scene, 'p2', 'P2_1', p2Dir, time, dashDuration, dashCooldown);
-
-  let p1Velocity = p1Dir * paddleSpeed;
-  let p2Velocity = p2Dir * paddleSpeed;
-
-  if (time < scene.state.dash.p1.activeUntil) {
-    p1Velocity = scene.state.dash.p1.dir * dashSpeed;
-  }
-  if (time < scene.state.dash.p2.activeUntil) {
-    p2Velocity = scene.state.dash.p2.dir * dashSpeed;
-  }
-
-  p1Body.setVelocityX(0);
-  p2Body.setVelocityX(0);
-
-  scene.playfield.p1Paddle.setX(
-    Phaser.Math.Clamp(
-      scene.playfield.p1Paddle.x + p1Velocity * deltaSeconds,
-      110,
-      GAME_WIDTH - 110,
-    ),
-  );
-  scene.playfield.p2Paddle.setX(
-    Phaser.Math.Clamp(
-      scene.playfield.p2Paddle.x + p2Velocity * deltaSeconds,
-      110,
-      GAME_WIDTH - 110,
-    ),
-  );
-
-  if (typeof p1Body.updateFromGameObject === 'function') {
-    p1Body.updateFromGameObject();
-  }
-  if (typeof p2Body.updateFromGameObject === 'function') {
-    p2Body.updateFromGameObject();
-  }
-}
-
-function tryStartDash(scene, playerKey, buttonCode, dir, time, duration, cooldown) {
-  if (!scene.controls.pressed[buttonCode]) return;
-  scene.controls.pressed[buttonCode] = false;
-  if (dir === 0) return;
-  const dashState = scene.state.dash[playerKey];
-  if (time < dashState.cooldownUntil) return;
-  dashState.dir = dir;
-  dashState.activeUntil = time + duration;
-  dashState.cooldownUntil = time + cooldown;
-  playSound(scene, 'dash');
-  spawnDashTrail(scene, playerKey, dir);
-}
-
-function spawnDashTrail(scene, playerKey, dir) {
-  const paddle =
-    playerKey === 'p1' ? scene.playfield.p1Paddle : scene.playfield.p2Paddle;
-  const color = playerKey === 'p1' ? COLORS.p1 : COLORS.p2;
-  const trail = scene.add.rectangle(paddle.x, paddle.y, paddle.width, paddle.height, color, 0.6);
-  scene.tweens.add({
-    targets: trail,
-    x: paddle.x - dir * 50,
-    alpha: 0,
-    scaleX: 0.4,
-    duration: 260,
-    onComplete: () => trail.destroy(),
-  });
-}
-
-function updateBallGhostStates(scene) {
-  const topLine = scene.playfield.p1Paddle.y;
-  const bottomLine = scene.playfield.p2Paddle.y;
-
-  for (const ball of scene.playfield.balls) {
-    const previousY = typeof ball.previousY === 'number' ? ball.previousY : ball.y;
-    const currentY = ball.y;
-
-    if (!ball.ghostFor.p1 && previousY >= topLine && currentY < topLine) {
-      ball.ghostFor.p1 = true;
-      animatePenaltyCounter(scene, 'p1');
-      playSound(scene, 'penalty');
-    } else if (ball.ghostFor.p1 && previousY <= topLine && currentY > topLine) {
-      ball.ghostFor.p1 = false;
-    }
-
-    if (!ball.ghostFor.p2 && previousY <= bottomLine && currentY > bottomLine) {
-      ball.ghostFor.p2 = true;
-      animatePenaltyCounter(scene, 'p2');
-      playSound(scene, 'penalty');
-    } else if (
-      ball.ghostFor.p2 &&
-      previousY >= bottomLine &&
-      currentY < bottomLine
-    ) {
-      ball.ghostFor.p2 = false;
-    }
-
-    ball.setAlpha(ball.ghostFor.p1 || ball.ghostFor.p2 ? 0.45 : 1);
-    ball.previousY = currentY;
-  }
-}
-
-function checkBallEscape(scene) {
-  for (const ball of scene.playfield.balls) {
-    const escaped =
-      !isFinite(ball.x) || !isFinite(ball.y) ||
-      ball.x < 10 || ball.x > GAME_WIDTH - 10 ||
-      ball.y < 10 || ball.y > GAME_HEIGHT - 10;
-    if (!escaped) {
-      continue;
-    }
-    // Ball slipped out — respawn it near centre heading toward the field
-    const vy = ball.lastTouchedBy === 'p1' ? 220 : -220;
-    const vx = Phaser.Math.Between(-160, 160);
-    ball.setPosition(GAME_WIDTH / 2, GAME_HEIGHT / 2);
-    ball.ghostFor = { p1: false, p2: false };
-    ball.previousY = GAME_HEIGHT / 2;
-    ball.setAlpha(1);
-    ball.body.setVelocity(vx, vy);
-  }
-}
-
-function canBallCollideWithPaddle(ball, playerKey) {
-  return ball.active && !ball.ghostFor?.[playerKey];
-}
-
-function updateBallTrails(scene, time) {
-  if (time % 3 > 1) {
-    return;
-  }
-
-  for (const ball of scene.playfield.balls) {
-    const trail = scene.add.circle(ball.x, ball.y, 4, ball.glowColor, 0.2);
-    scene.playfield.ballTrails.add(trail);
-
-    scene.tweens.add({
-      targets: trail,
-      alpha: 0,
-      scaleX: 0.2,
-      scaleY: 0.2,
-      duration: 250,
-      onComplete: () => trail.destroy(),
-    });
-  }
-}
-
-function handleBallPaddleCollision(scene, ball, paddle, playerKey) {
-  ball.lastTouchedBy = playerKey;
-  const ballColor = playerKey === 'p1' ? COLORS.p1 : COLORS.p2;
-  ball.setFillStyle(ballColor);
-  ball.glowColor = ballColor;
-
-  const offset = (ball.x - paddle.x) / (paddle.width / 2);
-  const currentSpeed = Math.min(ball.body.velocity.length() + 8, 330);
-  const horizontalVelocity = Phaser.Math.Clamp(offset * 220, -220, 220);
-  const verticalDirection = paddle === scene.playfield.p1Paddle ? 1 : -1;
-  const verticalVelocity = Math.max(120, Math.sqrt(currentSpeed * currentSpeed - horizontalVelocity * horizontalVelocity));
-
-  ball.body.setVelocity(horizontalVelocity, verticalVelocity * verticalDirection);
-}
-
-function handleBallBrickCollision(scene, ball, brick) {
-  if (!brick.active) {
-    return;
-  }
-
-  const brickX = brick.x;
-  const brickY = brick.y;
-  const brickHalfWidth = brick.width / 2;
-  const brickHalfHeight = brick.height / 2;
-  const deltaX = ball.x - brickX;
-  const deltaY = ball.y - brickY;
-  const normalizedX = Math.abs(deltaX) / Math.max(brickHalfWidth, 1);
-  const normalizedY = Math.abs(deltaY) / Math.max(brickHalfHeight, 1);
-  const speedX = Math.abs(ball.body.velocity.x);
-  const speedY = Math.abs(ball.body.velocity.y);
-
-  if (normalizedX > normalizedY) {
-    ball.body.setVelocityX((deltaX >= 0 ? 1 : -1) * Math.max(speedX, 150));
-    ball.setX(
-      brickX +
-        (deltaX >= 0 ? 1 : -1) * (brickHalfWidth + ball.width / 2 + 1),
-    );
-  } else {
-    ball.body.setVelocityY((deltaY >= 0 ? 1 : -1) * Math.max(speedY, 150));
-    ball.setY(
-      brickY +
-        (deltaY >= 0 ? 1 : -1) * (brickHalfHeight + ball.height / 2 + 1),
-    );
-  }
-
-  if (typeof ball.body.updateFromGameObject === 'function') {
-    ball.body.updateFromGameObject();
-  }
-
-  if (brick.body) {
-    brick.body.enable = false;
-  }
-  scene.playfield.bricks.remove(brick);
-  brick.destroy();
-  scene.state.remainingBricks -= 1;
-
-  if (ball.lastTouchedBy === 'p1') {
-    scene.state.scores.p1 += 1;
-  } else if (ball.lastTouchedBy === 'p2') {
-    scene.state.scores.p2 += 1;
-  }
-
-  spawnBrickBurst(scene, brick.x, brick.y, brick.fillColor);
-  playSound(scene, 'brick');
-  refreshHud(scene);
-  maybeFinishMatch(scene);
-}
-
-function startAmbientMusic(scene) {
-  if (scene.state.musicStarted) {
-    return;
-  }
-  scene.state.musicStarted = true;
-
+function startMusic(scene) {
+  if (scene.musicStarted) return;
+  scene.musicStarted = true;
   try {
-    const ctx = scene.sound.context;
-    if (!ctx) {
-      return;
-    }
-
-    // Master output
-    const out = ctx.createGain();
-    out.gain.value = 0.18;
-    out.connect(ctx.destination);
-
-    // Feedback delay for space/depth
-    const dly  = ctx.createDelay(2);
-    const dlFb = ctx.createGain();
-    dly.delayTime.value = 0.48;
-    dlFb.gain.value = 0.28;
-    dly.connect(dlFb);
-    dlFb.connect(dly);
-    dlFb.connect(out);
-
-    // Pad — Am7 chord (A2 C3 E3 G3) through chorused detuned oscs + LP filter
-    const padFilt = ctx.createBiquadFilter();
-    padFilt.type = 'lowpass';
-    padFilt.frequency.value = 800;
-    padFilt.Q.value = 1.4;
-    padFilt.connect(out);
-    padFilt.connect(dly);
-
-    // Very slow LFO sweeps the filter cutoff for movement
-    const lfo  = ctx.createOscillator();
-    const lfoG = ctx.createGain();
-    lfo.frequency.value = 0.055;
-    lfoG.gain.value = 430;
-    lfo.connect(lfoG);
-    lfoG.connect(padFilt.frequency);
-    lfo.start();
-
-    [
-      [110, 0, 'sawtooth'], [110, 11, 'sawtooth'], [110, -11, 'sawtooth'],
-      [130.81, 0, 'triangle'], [164.81, 5, 'triangle'], [196, -4, 'triangle'],
-    ].forEach(([f, d, type]) => {
-      const osc = ctx.createOscillator();
-      const g   = ctx.createGain();
-      osc.type = type;
-      osc.frequency.value = f;
-      osc.detune.value = d;
-      g.gain.value = 0.028;
-      osc.connect(g);
-      g.connect(padFilt);
-      osc.start();
-    });
-
-    // Arp — A minor pentatonic, up and back down
-    const ARP  = [220, 261.63, 293.66, 329.63, 392, 440, 392, 329.63, 293.66, 261.63];
-    const STEP = 0.43;
-    const ALEN = ARP.length * STEP;
-
-    function scheduleArp(t0) {
-      ARP.forEach((freq, i) => {
-        const t   = t0 + i * STEP;
+    const ctx = scene.sound && scene.sound.context ? scene.sound.context : null;
+    if (!ctx) return;
+    const notes = [110, 130.81, 146.83, 164.81, 146.83, 130.81, 196, 164.81];
+    let step = 0;
+    scene.time.addEvent({
+      delay: 180,
+      loop: true,
+      callback: () => {
+        if (!scene.state || scene.state.phase !== 'playing') return;
         const osc = ctx.createOscillator();
-        const g   = ctx.createGain();
+        const g = ctx.createGain();
         osc.type = 'triangle';
-        osc.frequency.value = freq;
+        const mult = scene.state.speedMult > 1.8 ? 1.25 : 1;
+        osc.frequency.setValueAtTime(notes[step % notes.length] * mult, ctx.currentTime);
+        g.gain.setValueAtTime(0.04, ctx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
         osc.connect(g);
-        g.connect(out);
-        g.connect(dly);
-        g.gain.setValueAtTime(0.001, t);
-        g.gain.linearRampToValueAtTime(0.048, t + 0.018);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + STEP * 0.65);
-        osc.start(t);
-        osc.stop(t + STEP * 0.72);
-      });
-      scene.time.delayedCall((ALEN - 0.06) * 1000, () => scheduleArp(t0 + ALEN));
-    }
-
-    // Sub-bass pulse on the beat (55 Hz sine, 120 bpm)
-    const BEAT = 1.0;
-    function scheduleBass(t) {
-      const osc = ctx.createOscillator();
-      const g   = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 55;
-      osc.connect(g);
-      g.connect(out);
-      g.gain.setValueAtTime(0.28, t);
-      g.gain.exponentialRampToValueAtTime(0.001, t + 0.5);
-      osc.start(t);
-      osc.stop(t + 0.55);
-      scene.time.delayedCall(BEAT * 1000, () => scheduleBass(t + BEAT));
-    }
-
-    // Short high-pitched digital tick — every half-beat, offset for syncopation
-    const TICK = 0.5;
-    function scheduleTick(t) {
-      const osc = ctx.createOscillator();
-      const g   = ctx.createGain();
-      osc.type = 'sine';
-      osc.frequency.value = 1320;
-      osc.connect(g);
-      g.connect(out);
-      g.gain.setValueAtTime(0.028, t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.02);
-      osc.start(t);
-      osc.stop(t + 0.025);
-      scene.time.delayedCall(TICK * 1000, () => scheduleTick(t + TICK));
-    }
-
-    const t0 = ctx.currentTime + 0.3;
-    scheduleArp(t0);
-    scheduleBass(t0);
-    scheduleTick(t0 + 0.25);
+        g.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+        step++;
+      },
+    });
   } catch (_) {}
 }
 
 function playSound(scene, type) {
   try {
-    const ctx = scene.sound && scene.sound.context ? scene.sound.context : new AudioContext();
+    const ctx = scene.sound && scene.sound.context ? scene.sound.context : null;
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
     gain.connect(ctx.destination);
-
     const now = ctx.currentTime;
-    if (type === 'brick') {
+
+    if (type === 'key') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(920, now);
+      gain.gain.setValueAtTime(0.07, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+      osc.start(now);
+      osc.stop(now + 0.035);
+    } else if (type === 'fix') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(523.25, now);
+      osc.frequency.setValueAtTime(783.99, now + 0.04);
+      osc.frequency.setValueAtTime(1046.5, now + 0.08);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
+      osc.start(now);
+      osc.stop(now + 0.15);
+    } else if (type === 'warn') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.setValueAtTime(330, now + 0.07);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+      osc.start(now);
+      osc.stop(now + 0.17);
+    } else if (type === 'fail') {
+      osc.type = 'sawtooth';
+      osc.frequency.setValueAtTime(200, now);
+      osc.frequency.linearRampToValueAtTime(85, now + 0.18);
+      gain.gain.setValueAtTime(0.18, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.21);
+    } else if (type === 'hack') {
       osc.type = 'square';
       osc.frequency.setValueAtTime(880, now);
-      osc.frequency.exponentialRampToValueAtTime(440, now + 0.08);
-      gain.gain.setValueAtTime(0.18, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
+      osc.frequency.setValueAtTime(220, now + 0.05);
+      osc.frequency.setValueAtTime(660, now + 0.1);
+      osc.frequency.setValueAtTime(1760, now + 0.15);
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
       osc.start(now);
-      osc.stop(now + 0.1);
-    } else if (type === 'penalty') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(300, now);
-      osc.frequency.exponentialRampToValueAtTime(80, now + 0.35);
-      gain.gain.setValueAtTime(0.28, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-      osc.start(now);
-      osc.stop(now + 0.38);
-    } else if (type === 'click') {
+      osc.stop(now + 0.27);
+    } else if (type === 'start') {
       osc.type = 'square';
-      osc.frequency.setValueAtTime(1200, now);
-      osc.frequency.exponentialRampToValueAtTime(600, now + 0.04);
-      gain.gain.setValueAtTime(0.08, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
-      osc.start(now);
-      osc.stop(now + 0.05);
-    } else if (type === 'dash') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(180, now);
-      osc.frequency.exponentialRampToValueAtTime(900, now + 0.12);
-      gain.gain.setValueAtTime(0.22, now);
+      osc.frequency.setValueAtTime(440, now);
+      osc.frequency.setValueAtTime(880, now + 0.08);
+      gain.gain.setValueAtTime(0.14, now);
       gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
       osc.start(now);
-      osc.stop(now + 0.18);
-    } else if (type === 'select') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(700, now);
-      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.08);
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.1);
-      osc.start(now);
-      osc.stop(now + 0.1);
+      osc.stop(now + 0.19);
     }
   } catch (_) {}
 }
 
-function spawnBrickBurst(scene, x, y, color) {
-  for (let index = 0; index < 6; index += 1) {
-    const particle = scene.add.rectangle(x, y, 4, 4, color, 1);
-    const angle = Phaser.Math.FloatBetween(0, Math.PI * 2);
-    const distance = Phaser.Math.Between(16, 42);
-
-    scene.tweens.add({
-      targets: particle,
-      x: x + Math.cos(angle) * distance,
-      y: y + Math.sin(angle) * distance,
-      alpha: 0,
-      angle: Phaser.Math.Between(-90, 90),
-      duration: Phaser.Math.Between(180, 320),
-      onComplete: () => particle.destroy(),
-    });
-  }
-}
-
-function refreshHud(scene) {
-  scene.hud.p1Score.setText(`P1 ${String(scene.state.scores.p1).padStart(2, '0')}`);
-  scene.hud.p2Score.setText(`P2 ${String(scene.state.scores.p2).padStart(2, '0')}`);
-  scene.hud.remaining.setText(`BRICKS ${String(scene.state.remainingBricks).padStart(3, '0')}`);
-}
-
-function animatePenaltyCounter(scene, playerKey) {
-  const text =
-    playerKey === 'p1' ? scene.hud.p1Score : scene.hud.p2Score;
-  const baseColor =
-    playerKey === 'p1'
-      ? scene.hud.scoreColors.p1
-      : scene.hud.scoreColors.p2;
-
-  scene.tweens.killTweensOf(text);
-  text.setColor(scene.hud.scoreColors.penalty);
-  text.setScale(1);
-  text.setAngle(0);
-
-  scene.tweens.add({
-    targets: text,
-    scaleX: 1.12,
-    scaleY: 1.12,
-    angle: playerKey === 'p1' ? -6 : 6,
-    duration: 90,
-    yoyo: true,
-    repeat: 1,
-    onComplete: () => {
-      text.setColor(baseColor);
-      text.setScale(1);
-      text.setAngle(0);
-    },
-  });
-}
-
-function maybeFinishMatch(scene) {
-  const { p1, p2 } = scene.state.scores;
-  const remaining = scene.state.remainingBricks;
-  const leaderScore = Math.max(p1, p2);
-  const trailingScore = Math.min(p1, p2);
-
-  if (remaining === 0 || leaderScore >= trailingScore + remaining) {
-    finishMatch(scene);
-  }
-}
-
-function finishMatch(scene) {
-  if (scene.state.phase !== 'playing') {
-    return;
-  }
-
-  scene.state.phase = 'gameover';
-  scene.physics.pause();
-  scene.hud.status.setText('');
-
-  const p1 = scene.state.scores.p1;
-  const p2 = scene.state.scores.p2;
-  const isTie = p1 === p2;
-
-  scene.state.winner = isTie ? 'draw' : p1 > p2 ? 'p1' : 'p2';
-  scene.state.winnerLabel =
-    scene.state.winner === 'p1'
-      ? 'PLAYER 1'
-      : scene.state.winner === 'p2'
-        ? 'PLAYER 2'
-        : 'DRAW';
-
-  scene.endGame.container.setVisible(true);
-  scene.endGame.summary.setText(
-    isTie
-      ? `${p1}  :  ${p2}`
-      : `${scene.state.winnerLabel}  ${Math.max(p1, p2)}  :  ${Math.min(p1, p2)}`,
-  );
-  scene.endGame.nameLabel.setText(
-    isTie ? 'DRAW TAG' : 'INITIALS',
-  );
-  scene.endGame.saveStatus.setText(scene.state.saveStatus);
-
-  scene.state.nameEntry.row = 0;
-  scene.state.nameEntry.col = 0;
-  scene.state.nameEntry.moveCooldownUntil = 0;
-  scene.state.nameEntry.confirmCooldownUntil = 0;
-  scene.state.nameEntry.lastMoveVector = { x: 0, y: 0 };
-  refreshNameEntry(scene);
-  updateLetterGridHighlight(scene);
-}
-
-function handleNameEntry(scene, time) {
-  const axisX = getHorizontalMenuAxis(scene.controls);
-  const axisY = getVerticalMenuAxis(scene.controls);
-  const entry = scene.state.nameEntry;
-
-  if (
-    time >= entry.moveCooldownUntil &&
-    (axisX !== 0 || axisY !== 0) &&
-    (entry.lastMoveVector.x !== axisX || entry.lastMoveVector.y !== axisY)
-  ) {
-    moveLetterSelection(scene, axisX, axisY);
-    entry.moveCooldownUntil = time + 160;
-    playSound(scene, 'click');
-  }
-
-  if (axisX === 0 && axisY === 0) {
-    entry.lastMoveVector = { x: 0, y: 0 };
-  } else {
-    entry.lastMoveVector = { x: axisX, y: axisY };
-  }
-
-  if (
-    time >= entry.confirmCooldownUntil &&
-    consumeAnyPressedControl(scene, ['P1_1', 'P2_1', 'P1_2', 'P2_2', 'START1', 'START2'])
-  ) {
-    entry.confirmCooldownUntil = time + 180;
-    playSound(scene, 'select');
-    activateCurrentLetter(scene);
-  }
-}
-
-function getHorizontalMenuAxis(controls) {
-  let axis = 0;
-  if (controls.held.P1_L || controls.held.P2_L) {
-    axis -= 1;
-  }
-  if (controls.held.P1_R || controls.held.P2_R) {
-    axis += 1;
-  }
-  return Phaser.Math.Clamp(axis, -1, 1);
-}
-
-function getVerticalMenuAxis(controls) {
-  let axis = 0;
-  if (controls.held.P1_U || controls.held.P2_U) {
-    axis -= 1;
-  }
-  if (controls.held.P1_D || controls.held.P2_D) {
-    axis += 1;
-  }
-  return Phaser.Math.Clamp(axis, -1, 1);
-}
-
-function normalizeIncomingKey(key) {
-  if (typeof key !== 'string' || key.length === 0) {
-    return '';
-  }
-
-  if (key === ' ') {
-    return 'space';
-  }
-
-  return key.toLowerCase();
-}
-
-function isControlHeld(scene, controlCode) {
-  return scene.controls.held[controlCode] === true;
-}
-
-function consumeAnyPressedControl(scene, controlCodes) {
-  for (const controlCode of controlCodes) {
-    if (scene.controls.pressed[controlCode]) {
-      scene.controls.pressed[controlCode] = false;
-      return true;
-    }
-  }
-
-  return false;
-}
-
-function moveLetterSelection(scene, axisX, axisY) {
-  const entry = scene.state.nameEntry;
-
-  if (axisY !== 0) {
-    entry.row = Phaser.Math.Wrap(entry.row + axisY, 0, LETTER_GRID.length);
-    entry.col = Math.min(entry.col, LETTER_GRID[entry.row].length - 1);
-  }
-
-  if (axisX !== 0) {
-    entry.col = Phaser.Math.Wrap(entry.col + axisX, 0, LETTER_GRID[entry.row].length);
-  }
-
-  updateLetterGridHighlight(scene);
-}
-
-function updateLetterGridHighlight(scene) {
-  const entry = scene.state.nameEntry;
-  for (const item of scene.endGame.gridLabels) {
-    const active = item.row === entry.row && item.col === entry.col;
-    item.cell.setFillStyle(active ? COLORS.accent : COLORS.cell, active ? 1 : 0.95);
-    item.cell.setStrokeStyle(2, active ? COLORS.white : COLORS.frame, active ? 1 : 0.8);
-    item.label.setColor(active ? '#04110b' : '#f7ffd8');
-  }
-}
-
-function activateCurrentLetter(scene) {
-  const entry = scene.state.nameEntry;
-  const selectedValue = LETTER_GRID[entry.row][entry.col];
-
-  if (selectedValue === 'DEL') {
-    entry.letters.pop();
-    refreshNameEntry(scene);
-    return;
-  }
-
-  if (selectedValue === 'END') {
-    if (entry.letters.length === 0) {
-      scene.endGame.saveStatus.setText('Pick at least one character before saving.');
-      return;
-    }
-
-    submitHighScore(scene);
-    return;
-  }
-
-  if (entry.letters.length >= WINNING_NAME_LENGTH) {
-    entry.letters.shift();
-  }
-
-  entry.letters.push(selectedValue);
-  refreshNameEntry(scene);
-}
-
-function refreshNameEntry(scene) {
-  const letters = scene.state.nameEntry.letters.slice();
-  while (letters.length < WINNING_NAME_LENGTH) {
-    letters.push('_');
-  }
-  scene.endGame.nameValue.setText(letters.join(' '));
-}
-
-function submitHighScore(scene) {
-  if (scene.state.phase !== 'gameover') {
-    return;
-  }
-
-  const initials = scene.state.nameEntry.letters.join('').slice(0, WINNING_NAME_LENGTH) || '???';
-  const winningScore =
-    scene.state.winner === 'p1'
-      ? scene.state.scores.p1
-      : scene.state.winner === 'p2'
-        ? scene.state.scores.p2
-        : scene.state.scores.p1;
-
-  const entry = {
-    name: initials,
-    winner: scene.state.winnerLabel,
-    score: winningScore,
-    detail: `${scene.state.scores.p1}-${scene.state.scores.p2}`,
-    savedAt: new Date().toISOString().slice(0, 10),
-  };
-
-  scene.state.saveStatus = `Saved ${initials}! Press START to play again.`;
-  scene.endGame.saveStatus.setText(scene.state.saveStatus);
-  scene.state.phase = 'saved';
-
-  persistHighScore(entry)
-    .then((nextScores) => {
-      scene.state.highScores = nextScores;
-      refreshLeaderboard(scene);
-    })
-    .catch(() => {
-      scene.state.saveStatus = 'Could not save the score, but the game result stands.';
-      if (scene.state.phase === 'saved') {
-        scene.endGame.saveStatus.setText(scene.state.saveStatus);
-      }
-    });
-}
-
-function refreshLeaderboard(scene) {
-  const lines = scene.state.highScores.length
-    ? scene.state.highScores.map((entry, index) => {
-        const rank = String(index + 1).padStart(2, '0');
-        const score = String(entry.score).padStart(2, '0');
-        return `${rank} ${entry.name.padEnd(3, ' ')} ${score} ${entry.winner}`;
-      })
-    : ['NO SAVED SCORES YET'];
-
-  scene.endGame.leaderboard.setText(lines.join('\n'));
-}
-
-async function persistHighScore(entry) {
-  const existing = await loadHighScores();
-  const nextScores = existing
-    .concat(entry)
-    .sort((left, right) => {
-      if (right.score !== left.score) {
-        return right.score - left.score;
-      }
-      return left.savedAt < right.savedAt ? 1 : -1;
-    })
-    .slice(0, MAX_HIGH_SCORES);
-
-  await storageSet(STORAGE_KEY, nextScores);
-  return nextScores;
-}
-
-async function loadHighScores() {
-  const result = await storageGet(STORAGE_KEY);
-  if (!result.found || !Array.isArray(result.value)) {
-    return [];
-  }
-
-  return result.value.filter(isHighScoreEntry).slice(0, MAX_HIGH_SCORES);
-}
-
-function isHighScoreEntry(value) {
-  return (
-    value &&
-    typeof value === 'object' &&
-    typeof value.name === 'string' &&
-    typeof value.winner === 'string' &&
-    typeof value.score === 'number' &&
-    typeof value.detail === 'string' &&
-    typeof value.savedAt === 'string'
-  );
-}
-
 function getStorage() {
-  if (window.platanusArcadeStorage) {
-    return window.platanusArcadeStorage;
-  }
-
+  if (window.platanusArcadeStorage) return window.platanusArcadeStorage;
   return {
     async get(key) {
       try {
         const raw = window.localStorage.getItem(key);
-        return raw === null
-          ? { found: false, value: null }
-          : { found: true, value: JSON.parse(raw) };
+        return raw === null ? { found: false, value: null } : { found: true, value: JSON.parse(raw) };
       } catch {
         return { found: false, value: null };
       }
     },
     async set(key, value) {
-      window.localStorage.setItem(key, JSON.stringify(value));
+      try {
+        window.localStorage.setItem(key, JSON.stringify(value));
+      } catch (_) {}
     },
-};
+  };
 }
 
-async function storageGet(key) {
-  return getStorage().get(key);
+async function loadHighScores() {
+  try {
+    const res = await getStorage().get(STORAGE_KEY);
+    if (res && res.found && Array.isArray(res.value)) {
+      return res.value.slice(0, 5);
+    }
+  } catch (_) {}
+  return [];
 }
 
-async function storageSet(key, value) {
-  return getStorage().set(key, value);
+async function saveHighScore(scene, entry) {
+  try {
+    const list = scene.state.highScores.concat(entry).sort((a, b) => b.score - a.score).slice(0, 5);
+    scene.state.highScores = list;
+    await getStorage().set(STORAGE_KEY, list);
+  } catch (_) {}
 }
