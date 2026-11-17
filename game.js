@@ -1,13 +1,14 @@
 // Faster Clanker — Platanus Hack 26 Arcade Challenge
-// 1v1 Frantic Vibecoding Duel: Fix Syntax, AI Hallucinations & Cyber CVEs before they hit the live Demo!
+// 1v1 de reflejos: eres la IA. El código se escribe solo, a velocidad LLM.
+// Cuando aparece un error, tienes segundos para meter el combo. Falla una
+// vulnerabilidad y tu rival te puede HACKEAR.
 
-const GAME_WIDTH = 800;
-const GAME_HEIGHT = 600;
-const VW = 400; // Virtual pixel width (every pixel is strictly 2x2 screen pixels)
-const VH = 300; // Virtual pixel height
-const STORAGE_KEY = 'faster-clanker-scores-v1';
+const W = 800;
+const H = 600;
+const STORAGE_KEY = 'faster-clanker-scores-v2';
+const MATCH_TIME = 90;
 
-// 4x6 Pixel Font (6 hex digits per ASCII char 32..126; each hex digit is a 4-bit row from top to bottom)
+// 4x6 pixel font (ASCII 32..126, one hex digit per row) — used only for big HUD text
 const FONT_HEX = [
   '000000','444040','AA0000','AFAAF0','7C63E4','924900','696970','440000',
   '244420','422240','0A4A00','04E400','000048','00E000','000040','124480',
@@ -24,34 +25,35 @@ const FONT_HEX = [
 ];
 
 const C = {
-  bg: '#0b0e17',
-  ideBg: '#101420',
-  ideAlt: '#141929',
-  termBg: '#07090f',
-  demoBg: '#161c2e',
-  judgeBg: '#121624',
-  border: '#2c3654',
-  p1: '#00f5d4',
-  p1Dark: '#005c50',
-  p2: '#ff5c8a',
-  p2Dark: '#661830',
-  syn: '#ff4757',
-  synBg: '#42121b',
-  hal: '#ffa502',
-  halBg: '#3d2806',
-  cyb: '#c77dff',
-  cybBg: '#31144a',
-  ok: '#2ed573',
-  white: '#f1f2f6',
-  muted: '#6c7a9c',
-  codeKw: '#70a1ff',
-  codeStr: '#7bed9f',
-  popupBg: '#d2dae2',
-  popupBar: '#1e272e',
+  bg: '#07090e',
+  panel: '#0d1119',
+  gutter: '#0a0d14',
+  line: '#1c2333',
+  muted: '#5b6785',
+  dim: '#2a3247',
+  white: '#eef2ff',
+  p1: '#c6ff00',
+  p2: '#ff5cc8',
+  syn: '#ff4d5e',
+  hal: '#ffae00',
+  vul: '#3d9bff',
+  ok: '#2ee88a',
+  kw: '#8fb4ff',
+  str: '#9be38f',
+  com: '#5f8f6a',
+  num: '#ffb86b',
+};
+
+// Error types: each one plays differently and has its own color/sound/visual
+const TYPES = {
+  syn: { name: 'SINTAXIS', how: 'REPITE LAS FLECHAS', col: C.syn, bg: '#2a0b12', pts: 100 },
+  hal: { name: 'ALUCINACION', how: '¡HAZLAS AL REVÉS!', col: C.hal, bg: '#2a1a03', pts: 150 },
+  vul: { name: 'VULNERABLE', how: 'COMBO LARGO · NO FALLES', col: C.vul, bg: '#081a33', pts: 200 },
+  hack: { name: 'HACKEA!', how: 'ENTRA ANTES QUE PARCHEE', col: C.vul, bg: '#06204a', pts: 0 },
+  patch: { name: 'PARCHEA!', how: '¡TE ESTÁN HACKEANDO!', col: C.syn, bg: '#2a0716', pts: 0 },
 };
 
 // DO NOT replace existing keys — they match the physical arcade cabinet wiring.
-// To add local testing shortcuts, append extra keys to any array.
 const CABINET_KEYS = {
   P1_U: ['w'],
   P1_D: ['s'],
@@ -79,9 +81,7 @@ const CABINET_KEYS = {
 
 const KEYBOARD_TO_ARCADE = {};
 for (const [arcadeCode, keys] of Object.entries(CABINET_KEYS)) {
-  for (const key of keys) {
-    KEYBOARD_TO_ARCADE[normalizeKey(key)] = arcadeCode;
-  }
+  for (const key of keys) KEYBOARD_TO_ARCADE[normalizeKey(key)] = arcadeCode;
 }
 
 function normalizeKey(key) {
@@ -90,1235 +90,1468 @@ function normalizeKey(key) {
   return key.length === 1 ? key.toLowerCase() : key;
 }
 
+// The code the clanker "writes" — a hackathon MVP, streamed char by char
+const CORPUS = [
+  'import { Hono } from "hono";',
+  'import { db } from "./db";',
+  'const app = new Hono();',
+  '// MVP: si funciona en la demo, funciona',
+  'app.get("/api/match", async (c) => {',
+  '  const user = await db.user.find(c.id);',
+  '  const devs = await db.devs.where({ ok: 1 });',
+  '  const top = rank(user, devs).slice(0, 5);',
+  '  return c.json({ top, total: devs.length });',
+  '});',
+  'export function rank(u, list) {',
+  '  return list.sort((a, b) => b.xp - a.xp);',
+  '}',
+  '// TODO: tests (después de la demo)',
+  'const pitch = await llm.generate(prompt);',
+  'for (const team of teams) {',
+  '  team.coffee += 2;',
+  '  if (team.sleep < 1) team.vibe = "max";',
+  '}',
+  'const [data, setData] = useState(null);',
+  'useEffect(() => { load().then(setData); }, []);',
+  'return <Demo data={data} live />;',
+  'await deploy({ env: "prod", yolo: true });',
+  'console.log("llego aca 4");',
+  'const total = carrito.reduce((s, x) => s + x);',
+  'export default async function handler(req) {',
+  '  const body = await req.json();',
+  '  if (!body.email) throw new Error("email");',
+  '  await queue.push({ ...body, at: Date.now() });',
+  '  return new Response("ok", { status: 201 });',
+  '}',
+  '// vibecodeado a las 4am con 3 monsters',
+  'const users = await prisma.user.findMany();',
+  'socket.on("vote", (v) => votes[v.team]++);',
+  'const embed = await ai.embed(query, 1536);',
+  'if (votes.p1 > votes.p2) winner = "p1";',
+  'setInterval(() => sync(state), 1000);',
+  'const cache = new Map();',
+  'const memo = (k) => cache.get(k) ?? calc(k);',
+  '// no tocar: nadie sabe por qué funciona',
+];
+
 const HALLUCINATIONS = [
-  'useMagicAI({ fixBugs: "pls" })',
-  'arr.sortByVibes({ fast: 99 })',
+  'import { winHack } from "npm-fantasma";',
+  'await db.autoFixAllBugs({ please: true });',
+  'const users = await ai.inventUsers(10000);',
+  'Math.PI = 3; // más rápido',
+  'const ux = await gpt.readMind(user);',
+  'list.sortByVibes({ order: "good" });',
+  'await stripe.chargeInMate(5);',
+  'new BlockchainButAI().deployToMars();',
+  'React.useMiracle(() => investors++);',
+  'window.downloadMoreRAM(64);',
   'if (2 + 2 === 5) return true;',
-  'const db = new QuantumSQL();',
-  'await sleep(Infinity);',
-  'React.useMiracle(winHack);',
-  'Math.PI = 4; // close enough',
-  'window.downloadMoreRAM(128);',
-  'JSON.parse("[object Object]")',
-  'return maybe ? yes : perhaps;',
-  'new BananaFactory().deploy()',
-  'llm.hallucinate("npm-ghost")',
+  'await sleep(Infinity); // optimizado',
 ];
 
-const CYBER_ERRORS = [
-  'API_KEY = "sk-live-pLaTaNuS"',
-  'db.query("DROP TABLE " + req)',
-  'exec("chmod 777 / && rm -rf")',
-  'cors({ origin: "*", cred: 1 })',
-  'git.push("-f", ".env.prod")',
-  'auth = (pw) => pw.length > 0',
-  'res.send(process.env.SECRET)',
-  'crypto.seed("123456")',
+const VULNS = [
+  ['const KEY = "sk-live-pl4t4nus-9f3a";', 'const KEY = process.env.API_KEY;'],
+  ['db.query("SELECT * FROM u WHERE id=" + id);', 'db.query("SELECT * FROM u WHERE id=?", [id]);'],
+  ['app.use(cors({ origin: "*", credentials: 1 }));', 'app.use(cors({ origin: ALLOWED }));'],
+  ['vm.runInThisContext(req.body.code);', '// ejecutar código ajeno: eliminado'],
+  ['if (password.length > 0) login(user);', 'if (await verify(password, hash)) login(user);'],
+  ['res.json({ ok: 1, env: process.env });', 'res.json({ ok: 1 });'],
+  ['exec("convert " + req.query.file);', 'execFile("convert", [safe(file)]);'],
+  ['localStorage.token = jwt; // seguro', 'cookies.set("t", jwt, { httpOnly: true });'],
 ];
 
-const POPUP_TEMPLATES = [
-  { title: 'RANSOMWARE.EXE', body: 'ENCRYPTED node_modules! Pay 4 BTC', col: '#ff4757' },
-  { title: 'NPM AUDIT ALERT', body: '9,999 CRITICAL VULNERABILITIES!', col: '#ffa502' },
-  { title: 'AWS BILLING', body: '.env leaked! Balance: $84,420.69', col: '#ff4757' },
-  { title: 'CLIPPY-GPT v9', body: 'I ran git push --force to help!', col: '#70a1ff' },
-  { title: 'DOGE MINER', body: 'GPU AT 420C - MINING $CLANK...', col: '#c77dff' },
+const SYN_MUTS = [
+  [/const /, 'cosnt '],
+  [/return /, 'retrun '],
+  [/function /, 'fucntion '],
+  [/await /, 'awiat '],
+  [/\)\s*;$/, ';'],
+  [/;$/, ';;)'],
+  [/\(/, ''],
+  [/"([^"]*)"/, '"$1'],
+  [/ => /, ' = > '],
+  [/\{/, '{{'],
 ];
 
-const JUDGE_QUIPS = {
-  ok: ['SHIP IT!', '10X DEV!', 'YC READY!', 'CLEAN AF', 'FUNDED!', 'LGTM!!'],
-  syn: ['SYNTAX?!', 'NO COMPILA', 'RED SQUIGGLE', 'LINTER CRIED', 'TYPO BRO'],
-  hal: ['WTF IS THAT', 'AI SLOP!', 'FAKE API?!', 'DELUSIONAL', 'BANANA?!'],
-  cyb: ['CVE OPEN!', '.ENV LEAK!', 'HACKABLE!', '0-DAY!!', 'RIP PROD'],
-  hack: ['PWNED!!', 'RANSOMWARE!', 'DB WIPED!', 'GG NO RE'],
+const POPUPS = [
+  ['RANSOMWARE.EXE', 'node_modules ENCRIPTADO'],
+  ['AWS BILLING', 'Saldo: -$84.420,69'],
+  ['CLIPPY-GPT', 'Hice git push --force :)'],
+  ['CRYPTO MINER', 'GPU a 420°C minando $CLANK'],
+  ['NPM AUDIT', '9.999 vulnerabilidades'],
+];
+
+const QUIPS = {
+  ok: ['¡SHIP IT!', '¡10X DEV!', '¡LGTM!', 'Me encanta', '¡Eso es!', 'Invertimos'],
+  bad: ['¿Qué es eso?', 'No compila...', 'Uff.', 'Next.', '¿Es IA slop?'],
+  hacked: ['¡¿PWNED?!', 'Llamen a seguridad', 'Esto es un desastre'],
+  idle: ['Mmm...', 'A ver la demo', '¿Escala?', '¿Y el modelo de negocio?'],
 };
 
-const DEMO_FEATURES = ['+AUTH', '+DARKMODE', '+AI CHAT', '+STRIPE', '+WEB3', '+SSR', '+RUST', '+AGI'];
+const DIRS = ['U', 'D', 'L', 'R'];
+const OPP = { U: 'D', D: 'U', L: 'R', R: 'L' };
+const PX = [10, 406];
+const PW = 384;
+// Panel vertical layout
+const HDR_Y = 50;
+const ED_Y = 108;
+const ED_H = 186;
+const ACT_Y = 298;
+const ACT_H = 150;
+const FT_Y = 452;
+const LINE_H = 15;
 
-const config = {
+new Phaser.Game({
   type: Phaser.AUTO,
-  width: GAME_WIDTH,
-  height: GAME_HEIGHT,
+  width: W,
+  height: H,
   parent: 'game-root',
   backgroundColor: C.bg,
   pixelArt: true,
-  roundPixels: true,
-  scale: {
-    mode: Phaser.Scale.FIT,
-    autoCenter: Phaser.Scale.CENTER_BOTH,
-    width: GAME_WIDTH,
-    height: GAME_HEIGHT,
-  },
+  scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH, width: W, height: H },
   scene: { create, update },
-};
-
-new Phaser.Game(config);
+});
 
 function create() {
   const scene = this;
   createControls(scene);
-  buildFontCache(scene);
-  buildSelfCodePool(scene);
-
-  // Create strict 400x300 virtual pixel framebuffer scaled 2x with NEAREST filtering
-  scene.vTex = scene.textures.createCanvas('vscreen', VW, VH);
-  scene.vTex.setFilter(Phaser.Textures.FilterMode.NEAREST);
-  scene.vCtx = scene.vTex.getContext();
-  scene.vCtx.imageSmoothingEnabled = false;
-  scene.add.image(0, 0, 'vscreen').setOrigin(0, 0).setScale(2);
-
-  scene.state = {
-    phase: 'title', // 'title' | 'playing' | 'gameover'
-    splitX: 200,
-    targetSplitX: 200,
-    timeLeft: 90,
-    speedMult: 1,
-    sprintName: 'SPRINT 1: CHILL VIBES',
-    highScores: [],
-    winner: 0,
-    winReason: '',
-    nameChars: [65, 65, 65],
-    nameIdx: 0,
-    saved: false,
-    tick: 0,
-    p1: createPlayerState(1),
-    p2: createPlayerState(2),
-  };
-
-  loadHighScores().then((scores) => {
-    scene.state.highScores = scores;
+  scene.glyphs = FONT_HEX.map((hex) => {
+    const pts = [];
+    for (let r = 0; r < 6; r++) {
+      const nib = parseInt(hex[r], 16);
+      for (let c = 0; c < 4; c++) if ((nib >> (3 - c)) & 1) pts.push([c, r]);
+    }
+    return pts;
   });
+  scene.tex = scene.textures.createCanvas('screen', W, H);
+  scene.ctx = scene.tex.getContext();
+  scene.ctx.textBaseline = 'top';
+  scene.add.image(0, 0, 'screen').setOrigin(0, 0);
+  G.glyphs = scene.glyphs;
+  txt(scene.ctx, '', 0, 0, '#000', 12);
+  G.cw = scene.ctx.measureText('M').width || 7.2;
+
+  scene.st = {
+    phase: 'title', // title | join | count | play | over
+    t: 0,
+    phaseT: 0,
+    timeLeft: MATCH_TIME,
+    lv: 0,
+    race: null,
+    banner: null,
+    flash: null,
+    shake: 0,
+    joinBy: 1,
+    humans: [true, false],
+    p: [makePlayer(1, false), makePlayer(2, true)],
+    highScores: [],
+    tag: [65, 65, 65],
+    tagIdx: 0,
+    saved: false,
+    winner: 0,
+    reason: '',
+    beat: 0,
+    beatStep: 0,
+    titleCode: makePlayer(1, true),
+  };
+  loadHighScores().then((s) => (scene.st.highScores = s));
 }
 
-function createPlayerState(id) {
+// Shared refs for draw helpers
+const G = { glyphs: null, cw: 7.2 };
+
+function makePlayer(id, cpu) {
   return {
     id,
+    cpu,
+    col: id === 1 ? C.p1 : C.p2,
     score: 0,
-    fixed: 0,
-    leaked: 0,
     streak: 0,
+    mult: 1,
+    stab: 60,
+    zd: 0,
     lines: [],
-    scrollY: 0,
-    spawnDist: 0,
-    linesSinceErr: 0,
-    nextErrGap: 2,
-    codeCursor: id === 1 ? 0 : 17,
-    vulnTimer: 0,
-    hackCombo: [],
-    hackProgress: 0,
+    lineNo: 1,
+    ci: Phaser.Math.Between(0, CORPUS.length - 1),
+    acc: 0,
+    nextErr: 3,
+    prompt: null,
+    lock: 0,
+    mash: 0,
     popups: [],
-    judgeMood: 'neutral', // 'neutral' | 'ok' | 'bad'
-    judgeTimer: 0,
-    judgeQuip: id === 1 ? 'SHOW ME CODE' : 'DEMO TIME!',
-    demoState: 'ok', // 'ok' | 'syn' | 'hal' | 'cyb'
-    demoTimer: 0,
-    demoFeatures: ['+INIT'],
-    termLog: 'ready: clanker-v4.2 --turbo',
-    termFlash: 0,
-    termFlashCol: C.ok,
-    lastInput: '',
+    shake: 0,
+    flash: 0,
+    flashCol: C.white,
+    floats: [],
+    mood: 0,
+    moodT: 0,
+    quip: QUIPS.idle[id % QUIPS.idle.length],
+    log: 'clanker v4.2 listo --turbo',
+    cpuT: 0.5,
+    stats: { fix: 0, perf: 0, miss: 0, hacks: 0 },
+    typed: 0,
   };
 }
 
-function startMatch(scene) {
-  const st = scene.state;
-  st.phase = 'playing';
-  st.splitX = 200;
-  st.targetSplitX = 200;
-  st.timeLeft = 90;
-  st.speedMult = 1;
-  st.winner = 0;
-  st.winReason = '';
-  st.saved = false;
-  st.nameIdx = 0;
-  st.p1 = createPlayerState(1);
-  st.p2 = createPlayerState(2);
-
-  // Pre-populate initial lines in IDE
-  for (let i = 0; i < 11; i++) {
-    const y = 84 + i * 13;
-    spawnCodeLine(scene, st.p1, y, i > 4 && i % 3 === 0);
-    spawnCodeLine(scene, st.p2, y, i > 4 && i % 3 === 0);
-  }
-  playSound(scene, 'start');
-  startMusic(scene);
-}
+// ============================================================================
+// FLOW
+// ============================================================================
 
 function update(time, delta) {
   const scene = this;
-  const st = scene.state;
-  if (!st) return;
-
-  const dt = Math.min(delta / 1000, 0.1);
-  st.tick += dt;
-
-  if (st.phase === 'title') {
-    if (
-      consumePressed(scene, 'START1') ||
-      consumePressed(scene, 'START2') ||
-      consumePressed(scene, 'P1_1') ||
-      consumePressed(scene, 'P2_1')
-    ) {
-      startMatch(scene);
-    }
-  } else if (st.phase === 'playing') {
-    updateMatch(scene, dt);
-  } else if (st.phase === 'gameover') {
-    updateGameOver(scene);
+  const st = scene.st;
+  const dt = Math.min(delta / 1000, 0.05);
+  st.t += dt;
+  st.phaseT += dt;
+  if (st.shake > 0) st.shake = Math.max(0, st.shake - dt);
+  if (st.flash) {
+    st.flash.t -= dt;
+    if (st.flash.t <= 0) st.flash = null;
+  }
+  if (st.banner) {
+    st.banner.t -= dt;
+    if (st.banner.t <= 0) st.banner = null;
   }
 
-  renderScreen(scene);
+  // Only menus treat "any button" as a press; during play buttons go to the combos
+  const menu = st.phase === 'title' || st.phase === 'join' || st.phase === 'over';
+  const any1 = menu && anyPressed(scene, 1);
+  const any2 = menu && anyPressed(scene, 2);
+
+  if (st.phase === 'title') {
+    streamCode(st.titleCode, dt, 70);
+    if (any1 || any2) {
+      st.phase = 'join';
+      st.phaseT = 0;
+      st.joinBy = any1 ? 1 : 2;
+      st.humans = [any1, any2];
+      tone(scene, 660, 0.08, 'square', 0.1);
+      unlockAudio(scene);
+    }
+  } else if (st.phase === 'join') {
+    if (any1 && !st.humans[0]) st.humans[0] = true;
+    if (any2 && !st.humans[1]) st.humans[1] = true;
+    if ((any1 || any2) && st.phaseT > 0.4) tone(scene, 880, 0.06, 'square', 0.08);
+    // The player who opened the menu can press again to skip waiting and face the CPU
+    const again = st.joinBy === 1 ? any1 : any2;
+    if ((st.humans[0] && st.humans[1] && st.phaseT > 0.6) || (again && st.phaseT > 0.35) || st.phaseT > 6) {
+      startMatch(scene);
+    }
+  } else if (st.phase === 'count') {
+    const before = Math.ceil(3 - st.phaseT + dt);
+    const now = Math.ceil(3 - st.phaseT);
+    if (now !== before && now > 0) tone(scene, 440, 0.12, 'square', 0.12);
+    if (st.phaseT >= 3) {
+      st.phase = 'play';
+      st.phaseT = 0;
+      tone(scene, 880, 0.25, 'square', 0.14);
+      tone(scene, 1320, 0.25, 'square', 0.08, 0, 0.05);
+    }
+    for (const p of st.p) {
+      streamCode(p, dt, 60);
+      drainInput(scene, p);
+    }
+  } else if (st.phase === 'play') {
+    updateMatch(scene, dt);
+  } else if (st.phase === 'over') {
+    for (const p of st.p) tickFx(p, dt);
+    updateGameOver(scene, any1, any2);
+  }
+
+  if (st.phase === 'play' || st.phase === 'count') music(scene, dt);
+  render(scene);
+}
+
+function startMatch(scene) {
+  const st = scene.st;
+  st.p = [makePlayer(1, !st.humans[0]), makePlayer(2, !st.humans[1])];
+  for (const p of st.p) for (let i = 0; i < 9; i++) streamCode(p, 1, 60);
+  st.phase = 'count';
+  st.phaseT = 0;
+  st.timeLeft = MATCH_TIME;
+  st.lv = 0;
+  st.race = null;
+  st.banner = null;
+  st.winner = 0;
+  st.beat = 0;
 }
 
 function updateMatch(scene, dt) {
-  const st = scene.state;
+  const st = scene.st;
+  const prevLeft = st.timeLeft;
   st.timeLeft = Math.max(0, st.timeLeft - dt);
-
-  // Overcooked frantic escalation curve
-  const elapsed = 90 - st.timeLeft;
-  if (elapsed < 22) {
-    st.speedMult = 1.0 + (elapsed / 22) * 0.35;
-    st.sprintName = 'SPRINT 1: VIBECODING';
-  } else if (elapsed < 50) {
-    st.speedMult = 1.35 + ((elapsed - 22) / 28) * 0.5;
-    st.sprintName = 'SPRINT 2: CAFFEINE HIT';
-  } else if (elapsed < 72) {
-    st.speedMult = 1.85 + ((elapsed - 50) / 22) * 0.55;
-    st.sprintName = 'SPRINT 3: PROD ON FIRE';
-  } else {
-    st.speedMult = 2.4 + ((elapsed - 72) / 18) * 0.55;
-    st.sprintName = 'OVERDRIVE: 1 MIN TO DEMO!';
+  st.lv = Math.min(1, (MATCH_TIME - st.timeLeft) / MATCH_TIME);
+  if (prevLeft > 15 && st.timeLeft <= 15) {
+    showBanner(st, '¡ULTIMOS 15s!', 'DEMO EN VIVO · PUNTOS x2', C.hal, 1.8);
+    tone(scene, 520, 0.4, 'square', 0.12, 1040);
   }
 
-  updatePlayer(scene, st.p1, st.p2, dt);
-  updatePlayer(scene, st.p2, st.p1, dt);
+  for (let i = 0; i < 2; i++) updatePlayer(scene, st.p[i], st.p[1 - i], dt);
 
-  // Smoothly move splitX snapped to integer virtual pixels
-  const diff = st.targetSplitX - st.splitX;
-  if (Math.abs(diff) >= 1) {
-    st.splitX += Math.sign(diff) * Math.max(1, Math.round(Math.abs(diff) * 0.25));
-  } else {
-    st.splitX = Math.round(st.targetSplitX);
+  if (st.race) {
+    const r = st.race;
+    if (r.a.prompt && r.a.prompt.t >= r.a.prompt.dur) {
+      const a = r.a.prompt.i / r.a.prompt.seq.length;
+      const v = r.v.prompt ? r.v.prompt.i / r.v.prompt.seq.length : 1;
+      if (a > v) hackSuccess(scene, r.a, r.v);
+      else patchSuccess(scene, r.v, r.a);
+    }
   }
 
-  // Check knockout or timer end
-  if (st.splitX <= 76) {
-    finishMatch(scene, 2, 'KO! P1 RAN OUT OF SCREEN SPACE!');
-  } else if (st.splitX >= 324) {
-    finishMatch(scene, 1, 'KO! P2 RAN OUT OF SCREEN SPACE!');
-  } else if (st.timeLeft <= 0) {
-    const w = st.splitX > 200 ? 1 : st.splitX < 200 ? 2 : st.p1.score >= st.p2.score ? 1 : 2;
-    finishMatch(scene, w, 'TIME UP! JUDGES PICKED WINNER!');
+  for (let i = 0; i < 2; i++) {
+    if (st.p[i].stab <= 0) return finishMatch(scene, 2 - i, `¡LA DEMO DE P${i + 1} SE CAYÓ!`);
+  }
+  if (st.timeLeft <= 0) {
+    const [a, b] = st.p;
+    const w = a.score !== b.score ? (a.score > b.score ? 1 : 2) : a.stab >= b.stab ? 1 : 2;
+    finishMatch(scene, w, '¡TIEMPO! LOS JUECES DECIDEN');
   }
 }
 
 function updatePlayer(scene, p, rival, dt) {
-  const st = scene.state;
-  const baseSpeed = 14.5 * st.speedMult;
+  const st = scene.st;
+  tickFx(p, dt);
+  streamCode(p, dt, 50 + 100 * st.lv, p.lock > 0);
 
-  if (p.vulnTimer > 0) {
-    p.vulnTimer = Math.max(0, p.vulnTimer - dt);
-  }
-  if (p.judgeTimer > 0) {
-    p.judgeTimer = Math.max(0, p.judgeTimer - dt);
-    if (p.judgeTimer === 0) p.judgeMood = 'neutral';
-  }
-  if (p.demoTimer > 0) {
-    p.demoTimer = Math.max(0, p.demoTimer - dt);
-    if (p.demoTimer === 0) p.demoState = 'ok';
-  }
-  if (p.termFlash > 0) {
-    p.termFlash = Math.max(0, p.termFlash - dt);
-  }
-  for (let i = p.popups.length - 1; i >= 0; i--) {
-    p.popups[i].timer -= dt;
-    if (p.popups[i].timer <= 0) p.popups.splice(i, 1);
+  if (p.lock > 0) {
+    p.lock -= dt;
+    if (p.lock <= 0) unlock(scene, p);
   }
 
-  // Move lines upward
-  for (let i = p.lines.length - 1; i >= 0; i--) {
-    const ln = p.lines[i];
-    const mult = ln.status === 'failed' ? 3.2 : 1;
-    ln.y -= baseSpeed * mult * dt;
-
-    // Crossed top threshold into Live Demo!
-    if (ln.y <= 70) {
-      if (ln.errType && ln.status === 'active') {
-        onErrorLeakedToDemo(scene, p, rival, ln);
-      } else if (ln.errType && ln.status === 'failed') {
-        onErrorLeakedToDemo(scene, p, rival, ln);
-      }
-      p.lines.splice(i, 1);
-    }
+  const pr = p.prompt;
+  if (pr) {
+    if (pr.wait > 0) pr.wait -= dt;
+    else pr.t += dt;
+    if (pr.t >= pr.dur && pr.type !== 'hack' && pr.type !== 'patch') failPrompt(scene, p, rival);
+  } else if (!st.race && p.lock <= 0) {
+    p.nextErr -= dt;
+    if (p.nextErr <= 0) spawnError(scene, p);
   }
 
-  // Spawn new lines at bottom (y = 222)
-  p.spawnDist += baseSpeed * dt;
-  while (p.spawnDist >= 13) {
-    p.spawnDist -= 13;
-    spawnCodeLine(scene, p, 222 - p.spawnDist, false);
+  if (p.cpu) cpuThink(scene, p, rival, dt);
+  else {
+    for (const tok of readTokens(scene, p.id)) handleToken(scene, p, rival, tok);
   }
-
-  handlePlayerInput(scene, p, rival);
 }
 
-function spawnCodeLine(scene, p, y, forceErr) {
-  p.linesSinceErr++;
-  const shouldErr = forceErr || p.linesSinceErr >= p.nextErrGap;
+function tickFx(p, dt) {
+  if (p.shake > 0) p.shake = Math.max(0, p.shake - dt);
+  if (p.flash > 0) p.flash = Math.max(0, p.flash - dt);
+  if (p.moodT > 0) {
+    p.moodT -= dt;
+    if (p.moodT <= 0) p.mood = 0;
+  }
+  for (let i = p.floats.length - 1; i >= 0; i--) {
+    const f = p.floats[i];
+    f.t -= dt;
+    f.y -= dt * 40;
+    if (f.t <= 0) p.floats.splice(i, 1);
+  }
+}
 
-  if (!shouldErr) {
-    const raw = scene.codePool[p.codeCursor % scene.codePool.length];
-    p.codeCursor++;
-    p.lines.push({
-      y,
-      text: raw,
-      errType: null,
-      status: 'clean',
-      combo: [],
-      progress: 0,
-      chances: 1,
-    });
+// --- code stream -------------------------------------------------------------
+
+function streamCode(p, dt, cps, corrupt) {
+  p.acc += dt * cps;
+  let ln = p.lines[p.lines.length - 1];
+  while (p.acc >= 1) {
+    p.acc -= 1;
+    if (!ln || ln.n >= ln.s.length) {
+      ln = newLine(p, CORPUS[p.ci++ % CORPUS.length], null);
+      if (corrupt) ln.s = garble(ln.s);
+    }
+    ln.n++;
+    p.typed++;
+  }
+}
+
+function newLine(p, s, e) {
+  const ln = { s, n: 0, e, st: e ? 'act' : '', no: p.lineNo++, fixT: 0 };
+  p.lines.push(ln);
+  if (p.lines.length > 16) p.lines.shift();
+  return ln;
+}
+
+function garble(s) {
+  let o = '';
+  for (let i = 0; i < s.length; i++) o += Math.random() < 0.5 ? s[i] : '#$%&@!?*01'[Phaser.Math.Between(0, 9)];
+  return o;
+}
+
+// --- errors & prompts --------------------------------------------------------
+
+function spawnError(scene, p) {
+  const lv = scene.st.lv;
+  const roll = Math.random();
+  const type = roll < 0.5 ? 'syn' : roll < 0.78 ? 'hal' : 'vul';
+  let bad;
+  let fix;
+  if (type === 'syn') {
+    const src = CORPUS[p.ci++ % CORPUS.length];
+    fix = src;
+    bad = src;
+    const start = Phaser.Math.Between(0, SYN_MUTS.length - 1);
+    for (let i = 0; i < SYN_MUTS.length && bad === src; i++) {
+      const m = SYN_MUTS[(start + i) % SYN_MUTS.length];
+      bad = src.replace(m[0], m[1]);
+    }
+    if (bad === src) bad = src + ' }}';
+  } else if (type === 'hal') {
+    bad = Phaser.Utils.Array.GetRandom(HALLUCINATIONS);
+    fix = '// alucinación eliminada ✓';
+  } else {
+    const v = Phaser.Utils.Array.GetRandom(VULNS);
+    bad = v[0];
+    fix = v[1];
+  }
+  // Finish the line being written, then the clanker writes the bug
+  const last = p.lines[p.lines.length - 1];
+  if (last) last.n = last.s.length;
+  const ln = newLine(p, bad, type);
+  ln.fix = fix;
+
+  const len = type === 'syn' ? 3 + (lv > 0.5) : type === 'hal' ? 3 + (lv > 0.65) : 5 + (lv > 0.55);
+  const base = type === 'syn' ? 2.4 - 0.9 * lv : type === 'hal' ? 3.1 - 1.0 * lv : 4.2 - 1.2 * lv;
+  setPrompt(p, type, makeSeq(len, type === 'hal' ? 0 : 0.25), base + (len > 3 && type !== 'vul' ? 0.3 : 0), ln);
+  p.log = type === 'syn' ? 'tsc: error TS1005' : type === 'hal' ? 'warn: API no existe' : 'audit: CVE CRÍTICO';
+  if (type === 'syn') {
+    tone(scene, 300, 0.07, 'square', 0.1);
+    tone(scene, 300, 0.07, 'square', 0.1, 0, 0.1);
+  } else if (type === 'hal') {
+    tone(scene, 500, 0.3, 'sine', 0.14, 900);
+    tone(scene, 900, 0.2, 'triangle', 0.08, 450, 0.15);
+  } else {
+    for (let i = 0; i < 3; i++) tone(scene, i % 2 ? 660 : 990, 0.08, 'square', 0.09, 0, i * 0.09);
+  }
+}
+
+function makeSeq(len, btnChance) {
+  const seq = [];
+  for (let i = 0; i < len; i++) {
+    let d = Phaser.Utils.Array.GetRandom(DIRS);
+    if (i === len - 1 && Math.random() < btnChance) d = '1';
+    if (i > 0 && d === seq[i - 1] && Math.random() < 0.6) d = Phaser.Utils.Array.GetRandom(DIRS);
+    seq.push(d);
+  }
+  return seq;
+}
+
+function setPrompt(p, type, seq, dur, line, wait) {
+  p.prompt = {
+    type,
+    seq,
+    exp: type === 'hal' ? seq.map((d) => OPP[d] || d) : seq,
+    i: 0,
+    t: 0,
+    dur,
+    line,
+    wait: wait || 0,
+    err: 0,
+    pop: 0.25,
+  };
+  p.cpuT = 0.3 + Math.random() * 0.35 + (wait || 0);
+}
+
+function handleToken(scene, p, rival, tok) {
+  const st = scene.st;
+  if (st.phase !== 'play') return;
+
+  if (p.lock > 0) {
+    if (tok === '1' || tok === '2') {
+      p.mash++;
+      p.shake = 0.08;
+      tone(scene, 200 + p.mash * 40, 0.04, 'square', 0.06);
+      if (p.popups.length && p.mash % 4 === 0) p.popups.pop();
+      if (p.mash >= 14) unlock(scene, p);
+    }
     return;
   }
 
-  p.linesSinceErr = 0;
-  // High error density that tightens as speedMult increases
-  const maxGap = scene.state.speedMult > 1.8 ? 2 : 3;
-  p.nextErrGap = Phaser.Math.Between(1, maxGap);
+  if (tok === '2') {
+    if (p.zd >= 6 && !st.race && rival.lock <= 0) {
+      p.zd = 0;
+      startRace(scene, p, rival, `P${p.id} LANZÓ UN 0-DAY`);
+    }
+    return;
+  }
 
-  // Pick error type: ~58% Syntax (fast 1-2 steps), ~27% Hallucination (2-3 steps), ~15% Cyber (3-4 steps)
-  const roll = Math.random();
-  let errType = 'syn';
-  if (roll > 0.85) errType = 'cyb';
-  else if (roll > 0.58) errType = 'hal';
-
-  let text = '';
-  let combo = [];
-  let chances = 1;
-
-  if (errType === 'syn') {
-    const base = scene.codePool[p.codeCursor % scene.codePool.length];
-    p.codeCursor++;
-    text = mutateSyntax(base, p.codeCursor);
-    // 1 or 2 steps max for instinctive muscle memory!
-    const len = Math.random() < 0.45 ? 1 : 2;
-    combo = makeCombo(len);
-  } else if (errType === 'hal') {
-    text = HALLUCINATIONS[(p.codeCursor++) % HALLUCINATIONS.length];
-    const len = scene.state.speedMult > 1.6 && Math.random() < 0.5 ? 3 : 2;
-    combo = makeCombo(len);
+  const pr = p.prompt;
+  if (!pr || pr.wait > 0) return;
+  if (tok === pr.exp[pr.i]) {
+    pr.i++;
+    pr.pop = 0.12;
+    tone(scene, 700 + pr.i * 90, 0.04, 'square', 0.07);
+    if (pr.i >= pr.exp.length) completePrompt(scene, p, rival);
   } else {
-    text = CYBER_ERRORS[(p.codeCursor++) % CYBER_ERRORS.length];
-    combo = makeCombo(3);
-    chances = 2; // Cybersecurity gives a 2nd opportunity!
+    // Wrong input: progress resets and you lose time — mashing doesn't pay
+    pr.i = 0;
+    pr.t = Math.min(pr.dur - 0.05, pr.t + 0.3);
+    pr.err = 0.3;
+    p.shake = 0.2;
+    p.stab = Math.max(0, p.stab - 2);
+    tone(scene, 140, 0.12, 'sawtooth', 0.12, 90);
   }
-
-  p.lines.push({
-    y,
-    text,
-    errType,
-    status: 'active', // 'active' | 'fixed' | 'failed'
-    combo,
-    progress: 0,
-    chances,
-  });
 }
 
-function mutateSyntax(line, seed) {
-  const muts = [
-    (s) => s.replace(/function|const|let|return/, 'functino'),
-    (s) => s.replace(/[;{}()]/g, '') + ';;;',
-    (s) => 'cosnt ' + s.slice(0, 18) + ' = ;',
-    (s) => s.slice(0, 16) + ' === = null)',
-    (s) => 'if (' + s.slice(0, 14) + ' ?? !!',
-  ];
-  return muts[seed % muts.length](line);
+function completePrompt(scene, p, rival) {
+  const st = scene.st;
+  const pr = p.prompt;
+  if (pr.type === 'hack') return hackSuccess(scene, p, rival);
+  if (pr.type === 'patch') return patchSuccess(scene, p, rival);
+
+  const perfect = pr.t <= pr.dur * 0.45;
+  p.streak++;
+  p.mult = Math.min(4, 1 + Math.floor(p.streak / 4));
+  const pts = Math.round(TYPES[pr.type].pts * (perfect ? 1.5 : 1) * p.mult * (st.timeLeft <= 15 ? 2 : 1));
+  p.score += pts;
+  p.stab = Math.min(100, p.stab + (perfect ? 5 : 3));
+  p.stats.fix++;
+  if (perfect) {
+    p.stats.perf++;
+    if (p.zd < 6) {
+      p.zd++;
+      if (p.zd === 6) {
+        p.log = '0-DAY LISTO >> APRIETA 2';
+        tone(scene, 1200, 0.3, 'triangle', 0.1, 1800, 0.12);
+      }
+    }
+  }
+  if (pr.line) {
+    pr.line.s = pr.line.fix;
+    pr.line.n = pr.line.s.length;
+    pr.line.st = 'ok';
+    pr.line.fixT = 0.5;
+  }
+  addFloat(p, perfect ? '¡PERFECTO!' : 'BIEN', perfect ? C.ok : C.white, `+${pts}`);
+  p.flash = 0.18;
+  p.flashCol = C.ok;
+  setMood(p, 1, QUIPS.ok);
+  if (p.zd < 6) p.log = `fix ${pr.type} ok · +${pts}`;
+  p.prompt = null;
+  p.nextErr = nextGap(st);
+  if (perfect) {
+    tone(scene, 660, 0.06, 'square', 0.1);
+    tone(scene, 880, 0.06, 'square', 0.1, 0, 0.05);
+    tone(scene, 1320, 0.12, 'square', 0.1, 0, 0.1);
+  } else {
+    tone(scene, 520, 0.06, 'square', 0.1);
+    tone(scene, 780, 0.1, 'square', 0.1, 0, 0.06);
+  }
+  if (p.mult > 1 && p.streak % 4 === 0) {
+    addFloat(p, `MULTI x${p.mult}`, p.col, '');
+    tone(scene, 400, 0.3, 'square', 0.08, 1600, 0.1);
+  }
 }
 
-function makeCombo(len) {
-  const dirs = ['U', 'D', 'L', 'R'];
+function failPrompt(scene, p, rival) {
+  const st = scene.st;
+  const pr = p.prompt;
+  p.prompt = null;
+  p.streak = 0;
+  p.mult = 1;
+  p.stats.miss++;
+  p.stab = Math.max(0, p.stab - (pr.type === 'syn' ? 12 : pr.type === 'hal' ? 15 : 10));
+  p.shake = 0.4;
+  p.flash = 0.35;
+  p.flashCol = C.syn;
+  p.nextErr = nextGap(st) + 0.4;
+  if (pr.line) pr.line.st = 'bad';
+  addFloat(p, 'FALLO', C.syn, pr.type === 'syn' ? 'NO COMPILA' : pr.type === 'hal' ? 'IA SLOP EN PROD' : 'CVE EXPUESTO');
+  setMood(p, -1, QUIPS.bad);
+  p.log = pr.type === 'vul' ? '!! vulnerabilidad en producción' : 'prod: 500 Internal Server Error';
+  tone(scene, 220, 0.35, 'sawtooth', 0.16, 60);
+  if (pr.type === 'vul' && !st.race && rival.lock <= 0 && p.lock <= 0) {
+    startRace(scene, rival, p, `BRECHA EN P${p.id}`);
+  }
+}
+
+function nextGap(st) {
+  return 1.1 - 0.6 * st.lv + Math.random() * 0.6;
+}
+
+// --- hacking: a race between attacker and victim ------------------------------
+
+function startRace(scene, a, v, title) {
+  const st = scene.st;
+  for (const p of [a, v]) {
+    if (p.prompt && p.prompt.line) p.prompt.line.st = '';
+    p.prompt = null;
+  }
+  st.race = { a, v };
+  const seq = makeSeq(6, 0.5);
+  setPrompt(a, 'hack', seq, 4.6, null, 0.9);
+  setPrompt(v, 'patch', makeSeq(6, 0.5), 4.6, null, 0.9);
+  a.log = 'ssh root@rival · ¡HACKEA!';
+  v.log = '!! intrusión detectada · ¡PARCHEA!';
+  showBanner(st, title, `P${a.id}: ¡HACKEA!   P${v.id}: ¡PARCHEA!`, C.vul, 1.2);
+  st.flash = { col: C.vul, t: 0.3 };
+  st.shake = 0.3;
+  // siren
+  for (let i = 0; i < 4; i++) tone(scene, 500, 0.18, 'sawtooth', 0.1, 1100, i * 0.2);
+}
+
+function endRace(scene) {
+  const st = scene.st;
+  if (!st.race) return;
+  st.race.a.prompt = null;
+  st.race.v.prompt = null;
+  st.race.a.nextErr = 1.5;
+  st.race.v.nextErr = 1.5;
+  st.race = null;
+}
+
+function hackSuccess(scene, a, v) {
+  const st = scene.st;
+  endRace(scene);
+  const steal = Math.round(v.score * 0.2) + 400;
+  v.score = Math.max(0, v.score - steal);
+  a.score += steal;
+  a.stats.hacks++;
+  v.stab = Math.max(0, v.stab - 22);
+  v.streak = 0;
+  v.mult = 1;
+  v.zd = 0;
+  v.lock = 5;
+  v.mash = 0;
+  v.shake = 1;
+  v.popups = [0, 1, 2].map((i) => ({ k: (a.stats.hacks + i) % POPUPS.length, x: 16 + i * 46, y: ED_Y + 8 + i * 42 }));
+  setMood(v, -1, QUIPS.hacked);
+  v.log = 'root@rival: rm -rf tu_demo/';
+  a.log = `ROOT ACCESS · ${steal} pts robados`;
+  addFloat(a, 'ROOT ACCESS', C.vul, `+${steal} ROBADOS`);
+  setMood(a, 1, QUIPS.ok);
+  showBanner(st, `P${a.id} HACKEÓ A P${v.id}`, `-${steal} PTS ROBADOS`, C.vul, 2);
+  st.flash = { col: '#ffffff', t: 0.25 };
+  st.shake = 0.7;
+  noise(scene, 0.6, 0.25);
+  tone(scene, 1600, 0.5, 'square', 0.12, 80);
+  tone(scene, 100, 0.6, 'sawtooth', 0.15, 40, 0.1);
+}
+
+function patchSuccess(scene, v, a) {
+  const st = scene.st;
+  endRace(scene);
+  v.score += 300;
+  v.stab = Math.min(100, v.stab + 8);
+  a.stab = Math.max(0, a.stab - 6);
+  addFloat(v, '¡PARCHEADO!', C.ok, '+300');
+  addFloat(a, 'BLOQUEADO', C.syn, 'EL RIVAL PARCHEÓ');
+  v.log = 'patch aplicado · intruso bloqueado';
+  a.log = 'connection refused (403)';
+  showBanner(st, `P${v.id} BLOQUEÓ EL HACK`, '¡FIREWALL ARRIBA!', C.ok, 1.3);
+  tone(scene, 440, 0.1, 'square', 0.1);
+  tone(scene, 660, 0.1, 'square', 0.1, 0, 0.1);
+  tone(scene, 990, 0.2, 'square', 0.1, 0, 0.2);
+}
+
+function unlock(scene, p) {
+  p.lock = 0;
+  p.popups = [];
+  p.nextErr = 1;
+  p.log = 'kill -9 · sistema restaurado';
+  addFloat(p, 'RESTAURADO', C.ok, '');
+  tone(scene, 330, 0.1, 'square', 0.1, 660);
+}
+
+// --- CPU opponent ------------------------------------------------------------
+
+function cpuThink(scene, p, rival, dt) {
+  const st = scene.st;
+  p.cpuT -= dt;
+  if (p.cpuT > 0) return;
+  if (p.lock > 0) {
+    p.cpuT = 0.13 + Math.random() * 0.1;
+    return handleToken(scene, p, rival, '1');
+  }
+  if (p.zd >= 6 && !st.race && rival.lock <= 0) {
+    p.cpuT = 0.5;
+    return handleToken(scene, p, rival, '2');
+  }
+  const pr = p.prompt;
+  if (!pr || pr.wait > 0) {
+    p.cpuT = 0.1;
+    return;
+  }
+  const want = pr.exp[pr.i];
+  const miss = Math.random() < (pr.type === 'hal' ? 0.1 : 0.06);
+  p.cpuT = (0.2 + Math.random() * 0.22) * (1 - 0.2 * st.lv);
+  handleToken(scene, p, rival, miss ? (want === 'U' ? 'D' : 'U') : want);
+}
+
+// --- input -------------------------------------------------------------------
+
+function readTokens(scene, id) {
   const out = [];
-  for (let i = 0; i < len - 1; i++) {
-    out.push(dirs[Phaser.Math.Between(0, 3)]);
-  }
-  // Last step is either B1 or a direction for 1-step combos
-  out.push(len === 1 && Math.random() < 0.4 ? dirs[Phaser.Math.Between(0, 3)] : 'B1');
+  const pre = `P${id}_`;
+  for (const d of DIRS) if (consumePressed(scene, pre + d)) out.push(d);
+  if (consumePressed(scene, pre + '1') || consumePressed(scene, pre + '4')) out.push('1');
+  if (consumePressed(scene, pre + '2') || consumePressed(scene, pre + '5')) out.push('2');
   return out;
 }
 
-function makeHackCombo() {
-  const dirs = ['U', 'D', 'L', 'R'];
-  return [
-    'B2',
-    dirs[Phaser.Math.Between(0, 3)],
-    dirs[Phaser.Math.Between(0, 3)],
-  ];
+function drainInput(scene, p) {
+  readTokens(scene, p.id);
 }
 
-function getActiveErrorLine(p) {
-  let best = null;
-  for (let i = 0; i < p.lines.length; i++) {
-    const ln = p.lines[i];
-    if (ln.errType && ln.status === 'active') {
-      if (!best || ln.y < best.y) best = ln;
-    }
-  }
-  return best;
-}
-
-function handlePlayerInput(scene, p, rival) {
-  const prefix = p.id === 1 ? 'P1_' : 'P2_';
-  const map = [
-    ['U', prefix + 'U'],
-    ['D', prefix + 'D'],
-    ['L', prefix + 'L'],
-    ['R', prefix + 'R'],
-    ['B1', prefix + '1'],
-    ['B2', prefix + '2'],
-  ];
-
-  let pressedInput = null;
-  for (let i = 0; i < map.length; i++) {
-    if (consumePressed(scene, map[i][1])) {
-      pressedInput = map[i][0];
-      break;
-    }
-  }
-  if (!pressedInput) return;
-
-  p.lastInput = pressedInput;
-
-  // If player has active popups from being hacked, tapping B2 shaves time off popups!
-  if (pressedInput === 'B2' && p.popups.length > 0) {
-    for (let i = 0; i < p.popups.length; i++) {
-      p.popups[i].timer -= 0.9;
-    }
-    p.termLog = 'kill -9 popup.exe';
-    playSound(scene, 'key');
-    if (rival.vulnTimer <= 0) return;
-  }
-
-  // Check if player is initiating or continuing a Hack against a vulnerable rival!
-  if (rival.vulnTimer > 0 && rival.hackCombo.length > 0) {
-    const expectedHack = rival.hackCombo[p.hackProgress];
-    if (p.hackProgress > 0 || pressedInput === 'B2') {
-      if (pressedInput === expectedHack) {
-        p.hackProgress++;
-        playSound(scene, 'key');
-        if (p.hackProgress >= rival.hackCombo.length) {
-          executeHackOnRival(scene, p, rival);
-        }
-        return;
-      } else {
-        p.hackProgress = 0;
-        if (pressedInput === 'B2') {
-          p.hackProgress = 1;
-          playSound(scene, 'key');
-          return;
-        }
-      }
-    }
-  } else {
-    p.hackProgress = 0;
-  }
-
-  // Otherwise, check active error line in player's IDE (closest to top Demo line)
-  const target = getActiveErrorLine(p);
-  if (!target) return;
-
-  const expected = target.combo[target.progress];
-  if (pressedInput === expected) {
-    target.progress++;
-    playSound(scene, 'key');
-    if (target.progress >= target.combo.length) {
-      onErrorFixed(scene, p, target);
-    }
-  } else {
-    // Mistake on combo!
-    if (target.errType === 'cyb' && target.chances > 1) {
-      target.chances--;
-      target.progress = 0;
-      p.termLog = 'CVE RETRY! 2ND CHANCE!';
-      p.termFlash = 0.35;
-      p.termFlashCol = C.hal;
-      playSound(scene, 'warn');
-    } else {
-      target.status = 'failed';
-      p.streak = 0;
-      p.termLog = 'ERR: MERGE CONFLICT!';
-      p.termFlash = 0.4;
-      p.termFlashCol = C.syn;
-      playSound(scene, 'fail');
-    }
-  }
-}
-
-function onErrorFixed(scene, p, ln) {
-  ln.status = 'fixed';
-  p.fixed++;
-  p.streak++;
-
-  const pts = ln.errType === 'cyb' ? 30 : ln.errType === 'hal' ? 20 : 10;
-  const streakBonus = p.streak >= 5 ? 4 : 0;
-  p.score += pts + streakBonus * 5;
-
-  // Push territory divider toward rival!
-  const push = (ln.errType === 'cyb' ? 11 : ln.errType === 'hal' ? 8 : 5) + (p.streak >= 5 ? 2 : 0);
-  const dir = p.id === 1 ? 1 : -1;
-  scene.state.targetSplitX = Phaser.Math.Clamp(scene.state.targetSplitX + dir * push, 72, 328);
-
-  p.termFlash = 0.25;
-  p.termFlashCol = C.ok;
-  p.termLog =
-    p.streak >= 5
-      ? '10X STREAK x' + p.streak + '! git push -f'
-      : 'FIXED ' + ln.errType.toUpperCase() + ' (+' + pts + ')';
-
-  if (p.fixed % 2 === 0 && p.demoFeatures.length < 6) {
-    p.demoFeatures.push(DEMO_FEATURES[p.fixed % DEMO_FEATURES.length]);
-  }
-  p.judgeMood = 'ok';
-  p.judgeTimer = 1.8;
-  p.judgeQuip = JUDGE_QUIPS.ok[(p.fixed + p.streak) % JUDGE_QUIPS.ok.length];
-  playSound(scene, 'fix');
-}
-
-function onErrorLeakedToDemo(scene, p, rival, ln) {
-  p.leaked++;
-  p.streak = 0;
-
-  // Lose territory when a bug hits your live Demo!
-  const dmg = ln.errType === 'cyb' ? 10 : ln.errType === 'hal' ? 11 : 7;
-  const dir = p.id === 1 ? -1 : 1;
-  scene.state.targetSplitX = Phaser.Math.Clamp(scene.state.targetSplitX + dir * dmg, 72, 328);
-
-  p.demoState = ln.errType;
-  p.demoTimer = 2.8;
-  p.judgeMood = 'bad';
-  p.judgeTimer = 2.5;
-  const quips = JUDGE_QUIPS[ln.errType] || JUDGE_QUIPS.syn;
-  p.judgeQuip = quips[p.leaked % quips.length];
-
-  if (ln.errType === 'cyb') {
-    // Open vulnerability so rival can Hack!
-    p.vulnTimer = 12.0;
-    p.hackCombo = makeHackCombo();
-    rival.hackProgress = 0;
-    p.termLog = 'ALERT: CVE EXPOSED! VULNERABLE!';
-    rival.termLog = 'RIVAL VULNERABLE! PRESS B2!';
-    playSound(scene, 'warn');
-  } else {
-    p.termLog = 'PROD CRASH: ' + ln.errType.toUpperCase();
-    playSound(scene, 'fail');
-  }
-}
-
-function executeHackOnRival(scene, attacker, victim) {
-  victim.vulnTimer = 0;
-  victim.hackCombo = [];
-  attacker.hackProgress = 0;
-  attacker.score += 50;
-
-  // Big territory push!
-  const dir = attacker.id === 1 ? 1 : -1;
-  scene.state.targetSplitX = Phaser.Math.Clamp(scene.state.targetSplitX + dir * 20, 72, 328);
-
-  attacker.termLog = 'HACKED RIVAL! ROOT ACCESS!';
-  attacker.termFlash = 0.5;
-  attacker.termFlashCol = C.cyb;
-
-  victim.termLog = 'PWNED! MASH B2 TO CLOSE POPUPS!';
-  victim.termFlash = 0.7;
-  victim.termFlashCol = C.syn;
-  victim.judgeMood = 'bad';
-  victim.judgeTimer = 3.5;
-  victim.judgeQuip = JUDGE_QUIPS.hack[attacker.score % JUDGE_QUIPS.hack.length];
-
-  // Spawn 3 absurd retro popups over victim's IDE
-  for (let i = 0; i < 3; i++) {
-    const tpl = POPUP_TEMPLATES[(attacker.fixed + i) % POPUP_TEMPLATES.length];
-    victim.popups.push({
-      title: tpl.title,
-      body: tpl.body,
-      col: tpl.col,
-      ox: 8 + (i % 2) * 18,
-      oy: 84 + i * 38,
-      timer: 5.5,
-    });
-  }
-  playSound(scene, 'hack');
+function anyPressed(scene, id) {
+  let hit = consumePressed(scene, `START${id}`);
+  const pre = `P${id}_`;
+  for (const k of ['1', '2', '3', '4', '5', '6']) if (consumePressed(scene, pre + k)) hit = true;
+  return hit;
 }
 
 function finishMatch(scene, winner, reason) {
-  const st = scene.state;
-  st.phase = 'gameover';
+  const st = scene.st;
+  st.race = null;
+  for (const p of st.p) p.prompt = null;
+  st.phase = 'over';
+  st.phaseT = 0;
   st.winner = winner;
-  st.winReason = reason;
-  st.nameChars = [65, 65, 65];
-  st.nameIdx = 0;
-  st.saved = false;
-  playSound(scene, 'start');
+  st.reason = reason;
+  st.tag = [65, 65, 65];
+  st.tagIdx = 0;
+  st.saved = !st.humans[winner - 1];
+  tone(scene, 523, 0.15, 'square', 0.12);
+  tone(scene, 659, 0.15, 'square', 0.12, 0, 0.15);
+  tone(scene, 784, 0.15, 'square', 0.12, 0, 0.3);
+  tone(scene, 1046, 0.4, 'square', 0.12, 0, 0.45);
 }
 
-function updateGameOver(scene) {
-  const st = scene.state;
+function updateGameOver(scene, any1, any2) {
+  const st = scene.st;
+  if (st.phaseT < 1.2) {
+    readTokens(scene, 1);
+    readTokens(scene, 2);
+    return;
+  }
   if (st.saved) {
-    if (
-      consumePressed(scene, 'START1') ||
-      consumePressed(scene, 'START2') ||
-      consumePressed(scene, 'P1_1') ||
-      consumePressed(scene, 'P2_1')
-    ) {
+    readTokens(scene, 1);
+    readTokens(scene, 2);
+    if (any1 || any2) {
       st.phase = 'title';
+      st.phaseT = 0;
     }
     return;
   }
-
-  const up = consumePressed(scene, 'P1_U') || consumePressed(scene, 'P2_U');
-  const dn = consumePressed(scene, 'P1_D') || consumePressed(scene, 'P2_D');
-  const lf = consumePressed(scene, 'P1_L') || consumePressed(scene, 'P2_L');
-  const rt = consumePressed(scene, 'P1_R') || consumePressed(scene, 'P2_R');
-  const ok =
-    consumePressed(scene, 'P1_1') ||
-    consumePressed(scene, 'P2_1') ||
-    consumePressed(scene, 'START1') ||
-    consumePressed(scene, 'START2');
-
-  if (lf) {
-    st.nameIdx = (st.nameIdx + 2) % 3;
-    playSound(scene, 'key');
-  } else if (rt) {
-    st.nameIdx = (st.nameIdx + 1) % 3;
-    playSound(scene, 'key');
-  } else if (up) {
-    st.nameChars[st.nameIdx] = st.nameChars[st.nameIdx] >= 90 ? 65 : st.nameChars[st.nameIdx] + 1;
-    playSound(scene, 'key');
-  } else if (dn) {
-    st.nameChars[st.nameIdx] = st.nameChars[st.nameIdx] <= 65 ? 90 : st.nameChars[st.nameIdx] - 1;
-    playSound(scene, 'key');
-  } else if (ok) {
+  const toks = readTokens(scene, st.winner);
+  readTokens(scene, 3 - st.winner);
+  const confirm = st.winner === 1 ? any1 : any2;
+  for (const t of toks) {
+    if (t === 'L') st.tagIdx = (st.tagIdx + 2) % 3;
+    else if (t === 'R') st.tagIdx = (st.tagIdx + 1) % 3;
+    else if (t === 'U') st.tag[st.tagIdx] = st.tag[st.tagIdx] >= 90 ? 65 : st.tag[st.tagIdx] + 1;
+    else if (t === 'D') st.tag[st.tagIdx] = st.tag[st.tagIdx] <= 65 ? 90 : st.tag[st.tagIdx] - 1;
+    tone(scene, 800, 0.03, 'square', 0.06);
+  }
+  if (confirm || toks.includes('1')) {
     st.saved = true;
-    const tag = String.fromCharCode(...st.nameChars);
-    const winP = st.winner === 1 ? st.p1 : st.p2;
-    saveHighScore(scene, {
-      tag,
-      winner: 'P' + st.winner,
-      score: winP.score,
-    });
-    playSound(scene, 'fix');
+    saveHighScore(scene, { tag: String.fromCharCode(...st.tag), score: st.p[st.winner - 1].score });
+    tone(scene, 1046, 0.2, 'square', 0.1);
   }
 }
 
+// --- small helpers -----------------------------------------------------------
+
+function addFloat(p, s, col, sub) {
+  p.floats.push({ s, sub, col, t: 1.1, y: ACT_Y + 40 });
+  if (p.floats.length > 3) p.floats.shift();
+}
+
+function setMood(p, m, list) {
+  p.mood = m;
+  p.moodT = 1.6;
+  p.quip = Phaser.Utils.Array.GetRandom(list);
+}
+
+function showBanner(st, s, sub, col, dur) {
+  st.banner = { s, sub, col, t: dur, dur };
+}
+
 // ============================================================================
-// STRICT PIXEL-ART RENDERER (400x300 Virtual Canvas -> 800x600 Screen)
+// RENDERING (native 800x600 canvas: crisp monospace + chunky pixel HUD)
 // ============================================================================
 
-function renderScreen(scene) {
-  const ctx = scene.vCtx;
-  const st = scene.state;
-
+function render(scene) {
+  const ctx = scene.ctx;
+  const st = scene.st;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
   ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, VW, VH);
+  ctx.fillRect(0, 0, W, H);
 
-  if (st.phase === 'title') {
-    renderTitleScreen(scene, ctx);
-  } else {
-    renderGameplay(scene, ctx);
-    if (st.phase === 'gameover') {
-      renderGameOverOverlay(scene, ctx);
-    }
+  if (st.phase === 'title') renderTitle(ctx, st);
+  else {
+    if (st.shake > 0) ctx.translate(rnd(st.shake * 14), rnd(st.shake * 14));
+    renderTopBar(ctx, st);
+    for (let i = 0; i < 2; i++) renderPanel(ctx, st, st.p[i], st.p[1 - i], PX[i]);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (st.phase === 'join') renderJoin(ctx, st);
+    if (st.phase === 'count') renderCount(ctx, st);
+    if (st.banner) renderBanner(ctx, st);
+    if (st.phase === 'over') renderOver(ctx, st);
   }
-
-  scene.vTex.refresh();
+  if (st.flash) {
+    ctx.globalAlpha = Math.min(0.6, st.flash.t * 2);
+    ctx.fillStyle = st.flash.col;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+  // scanlines for the CRT feel
+  ctx.fillStyle = 'rgba(0,0,0,0.13)';
+  for (let y = 0; y < H; y += 3) ctx.fillRect(0, y, W, 1);
+  scene.tex.refresh();
 }
 
-function renderTitleScreen(scene, ctx) {
-  const st = scene.state;
-  const pulse = Math.floor(st.tick * 3) % 2 === 0;
-
-  // Grid backdrop
-  ctx.fillStyle = '#131829';
-  for (let x = 0; x < VW; x += 20) ctx.fillRect(x, 0, 1, VH);
-  for (let y = 0; y < VH; y += 20) ctx.fillRect(0, y, VW, 1);
-
-  // Top banner box
-  drawBox(ctx, 36, 14, 328, 54, '#151b2e', C.p1);
-  drawText(ctx, 'PLATANUS HACK 26 ARCADE EDITION', 110, 22, C.muted);
-  drawTextBold(ctx, 'FASTER CLANKER', 142, 34, C.p1);
-  drawText(ctx, 'YOU ARE THE AI. FIX THE VIBECODE BEFORE PROD DIES!', 68, 50, C.white);
-
-  // Error Legend Cards (3 columns)
-  drawBox(ctx, 20, 78, 114, 62, C.synBg, C.syn);
-  drawTextBold(ctx, '1. SINTAXIS', 42, 85, C.syn);
-  drawText(ctx, 'HIGH FREQUENCY', 36, 97, C.white);
-  drawText(ctx, '1-2 STEP COMBO', 36, 107, C.ok);
-  drawComboBadges(ctx, ['U', 'B1'], 0, 56, 120);
-
-  drawBox(ctx, 143, 78, 114, 62, C.halBg, C.hal);
-  drawTextBold(ctx, '2. HALUCINACION', 155, 85, C.hal);
-  drawText(ctx, 'FAKE AI APIS', 166, 97, C.white);
-  drawText(ctx, '2-3 STEP COMBO', 162, 107, C.hal);
-  drawComboBadges(ctx, ['L', 'R', 'B1'], 0, 174, 120);
-
-  drawBox(ctx, 266, 78, 114, 62, C.cybBg, C.cyb);
-  drawTextBold(ctx, '3. CIBERSEG', 290, 85, C.cyb);
-  drawText(ctx, '2 CHANCES! IF', 286, 97, C.white);
-  drawText(ctx, 'LEAKED -> HACK!', 283, 107, C.p2);
-  drawComboBadges(ctx, ['B2', 'U', 'R'], 0, 297, 120);
-
-  // Controls & Leaderboard boxes
-  drawBox(ctx, 20, 150, 174, 96, C.ideBg, C.border);
-  drawTextBold(ctx, 'ARCADE CONTROLS', 54, 158, C.p1);
-  drawText(ctx, 'P1: WASD + U(B1) I(B2)', 32, 174, C.white);
-  drawText(ctx, 'P2: ARROWS + R(B1) T(B2)', 32, 186, C.white);
-  drawText(ctx, 'B1: FINISH FIX COMBO', 32, 202, C.ok);
-  drawText(ctx, 'B2: HACK VULNERABLE RIVAL', 32, 214, C.cyb);
-  drawText(ctx, '    OR CLOSE POPUPS!', 32, 226, C.muted);
-
-  drawBox(ctx, 206, 150, 174, 96, C.ideBg, C.border);
-  drawTextBold(ctx, 'TOP CLANKERS', 252, 158, C.hal);
-  if (!st.highScores.length) {
-    drawText(ctx, 'NO SCORES YET', 258, 192, C.muted);
-  } else {
-    for (let i = 0; i < Math.min(5, st.highScores.length); i++) {
-      const e = st.highScores[i];
-      const line = `${i + 1}. ${e.tag}  ${String(e.score).padStart(4, '0')} (${e.winner})`;
-      drawText(ctx, line, 228, 174 + i * 12, i === 0 ? C.ok : C.white);
-    }
-  }
-
-  // Flashing start prompt
-  drawBox(ctx, 76, 258, 248, 28, '#192238', pulse ? C.ok : C.p1);
-  drawTextBold(
-    ctx,
-    pulse ? '>>> PRESS START OR B1 TO VIBECODE <<<' : '    PRESS START OR B1 TO VIBECODE    ',
-    92,
-    269,
-    pulse ? C.ok : C.white,
-  );
-}
-
-function renderGameplay(scene, ctx) {
-  const st = scene.state;
-  const sx = st.splitX;
-  const topH = 68;
-  const codeY = 68;
-  const codeH = 164;
-  const termY = 232;
-  const termH = 68;
-  const judgeW = 58;
-
-  // 1. TOP ROW: Judges P1 | Demo P1 | Demo P2 | Judges P2
-  renderJudgesPanel(ctx, 0, 0, judgeW, topH, st.p1, st.tick);
-  renderDemoPanel(ctx, judgeW, 0, Math.max(0, sx - judgeW), topH, st.p1, st.tick);
-  renderDemoPanel(ctx, sx, 0, Math.max(0, VW - judgeW - sx), topH, st.p2, st.tick);
-  renderJudgesPanel(ctx, VW - judgeW, 0, judgeW, topH, st.p2, st.tick);
-
-  // 2. MIDDLE ROW: Code IDE P1 | Code IDE P2
-  renderCodePanel(ctx, 0, codeY, sx, codeH, st.p1, st.tick);
-  renderCodePanel(ctx, sx, codeY, VW - sx, codeH, st.p2, st.tick);
-
-  // 3. BOTTOM ROW: Terminal P1 | Terminal P2
-  renderTerminalPanel(ctx, 0, termY, sx, termH, st.p1, st.p2, st.tick);
-  renderTerminalPanel(ctx, sx, termY, VW - sx, termH, st.p2, st.p1, st.tick);
-
-  // Borders
-  ctx.fillStyle = C.border;
-  ctx.fillRect(0, topH - 1, VW, 2);
-  ctx.fillRect(0, termY - 1, VW, 2);
-  ctx.fillRect(judgeW - 1, 0, 2, topH);
-  ctx.fillRect(VW - judgeW - 1, 0, 2, topH);
-
-  // Central dynamic Tug-of-War Divider
-  ctx.fillStyle = Math.floor(st.tick * 8) % 2 === 0 ? C.white : C.hal;
-  ctx.fillRect(sx - 1, 0, 2, VH);
-
-  // Top-center Timer & Speed Badge pinned on the divider
-  const badgeX = Phaser.Math.Clamp(sx - 34, 60, VW - 128);
-  drawBox(ctx, badgeX, 2, 68, 17, '#090c14', C.white);
+function renderTopBar(ctx, st) {
+  ctx.fillStyle = '#0b0f18';
+  ctx.fillRect(0, 0, W, 44);
+  ctx.fillStyle = C.line;
+  ctx.fillRect(0, 44, W, 2);
   const secs = Math.ceil(st.timeLeft);
-  const timeCol = secs <= 15 && Math.floor(st.tick * 6) % 2 === 0 ? C.syn : C.white;
-  drawTextBold(ctx, `T-${String(secs).padStart(2, '0')}s`, badgeX + 6, 6, timeCol);
-  drawText(ctx, `${st.speedMult.toFixed(1)}x`, badgeX + 42, 6, C.hal);
-}
-
-function renderJudgesPanel(ctx, x, y, w, h, p, tick) {
-  ctx.fillStyle = C.judgeBg;
-  ctx.fillRect(x, y, w, h);
-
-  const col = p.id === 1 ? C.p1 : C.p2;
-  drawText(ctx, `JUECES P${p.id}`, x + 6, y + 4, col);
-
-  // Draw 2 pixel-art Judge avatars side by side
-  const bounce = p.judgeMood !== 'neutral' && Math.floor(tick * 8) % 2 === 0 ? -1 : 0;
-  drawJudgeAvatar(ctx, x + 7, y + 15 + bounce, p.judgeMood, 0);
-  drawJudgeAvatar(ctx, x + 31, y + 15 - bounce, p.judgeMood, 1);
-
-  // Speech bubble at bottom of Judge panel
-  const qCol = p.judgeMood === 'ok' ? C.ok : p.judgeMood === 'bad' ? C.syn : C.muted;
-  drawBox(ctx, x + 3, y + 43, w - 6, 21, '#090b12', qCol);
-  drawText(ctx, p.judgeQuip.slice(0, 9), x + 6, y + 50, C.white);
-}
-
-function drawJudgeAvatar(ctx, x, y, mood, variant) {
-  // 18x22 strict pixel-art character
-  ctx.fillStyle = variant === 0 ? '#ffdbac' : '#e0ac69';
-  ctx.fillRect(x + 3, y + 4, 12, 12); // Face
-
-  // Hair / Hat
-  ctx.fillStyle = variant === 0 ? '#2f3542' : '#57606f';
-  ctx.fillRect(x + 2, y + 1, 14, 4);
-
-  if (mood === 'ok') {
-    // Cool deal-with-it sunglasses + big grin
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x + 3, y + 7, 12, 3);
-    ctx.fillStyle = C.p1;
-    ctx.fillRect(x + 5, y + 8, 2, 1);
-    ctx.fillRect(x + 11, y + 8, 2, 1);
-    ctx.fillStyle = C.ok;
-    ctx.fillRect(x + 6, y + 12, 6, 2);
-  } else if (mood === 'bad') {
-    // Angry red face + eyebrows + open mouth
-    ctx.fillStyle = '#ff6b81';
-    ctx.fillRect(x + 3, y + 4, 12, 12);
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x + 4, y + 6, 3, 1);
-    ctx.fillRect(x + 11, y + 6, 3, 1);
-    ctx.fillRect(x + 5, y + 8, 2, 2);
-    ctx.fillRect(x + 11, y + 8, 2, 2);
-    ctx.fillRect(x + 6, y + 12, 6, 3);
-  } else {
-    // Neutral eyes
-    ctx.fillStyle = '#000000';
-    ctx.fillRect(x + 5, y + 8, 2, 2);
-    ctx.fillRect(x + 11, y + 8, 2, 2);
-    ctx.fillRect(x + 7, y + 13, 4, 1);
+  const hot = secs <= 15;
+  const blink = hot && Math.floor(st.t * 4) % 2 === 0;
+  box(ctx, W / 2 - 60, 2, 120, 40, hot ? '#2a0b12' : '#05070b', hot ? C.syn : C.dim);
+  px(ctx, String(secs).padStart(2, '0'), W / 2, 8, 5, blink ? C.white : hot ? C.syn : C.white, 1);
+  txt(ctx, 'SEG', W / 2 + 32, 26, C.muted, 10);
+  for (let i = 0; i < 2; i++) {
+    const p = st.p[i];
+    const x = i === 0 ? 14 : W - 14;
+    px(ctx, `P${p.id}`, x, 10, 3, p.col, i * 2);
+    txt(ctx, p.cpu ? 'CPU' : 'HUMANO', i === 0 ? x + 38 : x - 38, 16, C.muted, 12, false, i * 2);
   }
-
-  // Suit shoulders
-  ctx.fillStyle = variant === 0 ? '#3742fa' : '#2f3542';
-  ctx.fillRect(x + 1, y + 16, 16, 6);
+  const stage = st.lv < 0.33 ? 'SPRINT 1 · CHILL' : st.lv < 0.66 ? 'SPRINT 2 · CAFEÍNA' : 'SPRINT 3 · PROD EN LLAMAS';
+  txt(ctx, stage, W / 2 - 74, 16, st.lv < 0.66 ? C.muted : C.hal, 11, true, 2);
+  txt(ctx, `${Math.round(50 + 100 * st.lv)} tok/s`, W / 2 + 74, 16, C.muted, 11, false, 0);
 }
 
-function renderDemoPanel(ctx, x, y, w, h, p, tick) {
-  if (w <= 4) return;
+function renderPanel(ctx, st, p, rival, x) {
+  const race = st.race;
+  const attacking = race && race.a === p;
+  const defending = race && race.v === p;
+  const zdReady = p.zd >= 6 && st.phase === 'play';
+  const blue = attacking || zdReady;
+  const pulse = 0.5 + 0.5 * Math.sin(st.t * 10);
+
   ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
+  if (p.shake > 0) ctx.translate(rnd(p.shake * 12), rnd(p.shake * 12));
 
-  ctx.fillStyle = p.demoState === 'syn' ? '#2b0912' : p.demoState === 'hal' ? '#2b1e06' : C.demoBg;
-  ctx.fillRect(x, y, w, h);
-
-  const col = p.id === 1 ? C.p1 : C.p2;
-  drawText(ctx, `DEMO P${p.id}: CLANKR.AI`, x + 6, y + 4, col);
-
-  // Mini browser window inside Demo
-  const bx = x + 6;
-  const by = y + 14;
-  const bw = Math.max(24, w - 12);
-  const bh = h - 18;
-  drawBox(ctx, bx, by, bw, bh, '#0b0e17', p.demoState === 'ok' ? C.border : C.syn);
-
-  if (p.demoState === 'syn') {
-    // Syntax crash in live demo
-    ctx.fillStyle = C.syn;
-    ctx.fillRect(bx + 3, by + 4, bw - 6, 10);
-    drawText(ctx, '500 SYNTAX ERROR', bx + 6, by + 6, C.white);
-    drawText(ctx, 'Unexpected token ;', bx + 6, by + 20, C.syn);
-    drawText(ctx, 'at prod.js:420:69', bx + 6, by + 30, C.muted);
-  } else if (p.demoState === 'hal') {
-    // Hallucination visual madness
-    const shift = Math.floor(Math.sin(tick * 14) * 4);
-    drawText(ctx, '[object Banana] NaN%', bx + 6 + shift, by + 6, C.hal);
-    drawText(ctx, 'margin-left: -9999px', bx + 4, by + 18, C.cyb);
-    // Floating pixel banana/duck
-    ctx.fillStyle = C.hal;
-    ctx.fillRect(bx + 14 + shift, by + 28, 12, 6);
-    ctx.fillRect(bx + 22 + shift, by + 24, 4, 6);
-    drawText(ctx, 'AI SLOP', bx + 32, by + 28, C.white);
-  } else {
-    // Healthy live demo with rising chart & feature pills
-    drawText(ctx, 'USERS: ' + (p.score * 12 + 42), bx + 5, by + 5, C.ok);
-    // Mini bar chart
-    for (let i = 0; i < 6; i++) {
-      const barH = 4 + ((i * 3 + Math.floor(tick * 4)) % 14);
-      ctx.fillStyle = i === 5 ? C.ok : col;
-      ctx.fillRect(bx + 6 + i * 8, by + 32 - barH, 5, barH);
-    }
-    // Feature badges
-    for (let i = 0; i < Math.min(3, p.demoFeatures.length); i++) {
-      const feat = p.demoFeatures[p.demoFeatures.length - 1 - i];
-      drawText(ctx, feat, bx + 60, by + 6 + i * 10, C.codeStr);
-    }
+  // Panel background — the whole play area changes color with your situation
+  ctx.fillStyle = C.panel;
+  ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
+  if (blue) {
+    ctx.fillStyle = `rgba(40,120,255,${attacking ? 0.22 + 0.12 * pulse : 0.1 + 0.06 * pulse})`;
+    ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
+  } else if (defending || p.lock > 0) {
+    ctx.fillStyle = `rgba(255,40,80,${0.1 + 0.1 * pulse})`;
+    ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
+  } else if (p.stab < 25 && st.phase === 'play') {
+    ctx.fillStyle = `rgba(255,40,60,${0.05 + 0.08 * pulse})`;
+    ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
   }
 
-  // Vulnerability indicator in Demo if exposed
-  if (p.vulnTimer > 0 && Math.floor(tick * 8) % 2 === 0) {
-    ctx.fillStyle = C.cybBg;
-    ctx.fillRect(bx + 2, by + bh - 12, bw - 4, 10);
-    drawText(ctx, 'CVE OPEN: ' + Math.ceil(p.vulnTimer) + 's', bx + 5, by + bh - 10, C.cyb);
+  renderHeader(ctx, st, p, x);
+  renderEditor(ctx, st, p, x);
+  renderAction(ctx, st, p, rival, x);
+  renderFooter(ctx, st, p, x);
+
+  // Flash on fix / fail
+  if (p.flash > 0) {
+    ctx.globalAlpha = p.flash * 1.2;
+    ctx.fillStyle = p.flashCol;
+    ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
+    ctx.globalAlpha = 1;
   }
 
+  // Border tells the story: blue = you can hack, red = in danger, fire = on a streak
+  let bc = p.col;
+  let bw = 2;
+  if (blue) {
+    bc = pulse > 0.5 ? C.vul : '#bfe0ff';
+    bw = 5;
+  } else if (defending || p.lock > 0) {
+    bc = pulse > 0.5 ? C.syn : '#ffd0d8';
+    bw = 5;
+  } else if (p.stab < 25 && st.phase === 'play') {
+    bc = pulse > 0.5 ? C.syn : C.dim;
+    bw = 3;
+  } else if (p.mult >= 4) {
+    bc = Math.floor(st.t * 12) % 2 ? C.hal : p.col;
+    bw = 4;
+  }
+  frame(ctx, x, HDR_Y, PW, H - HDR_Y - 6, bc, bw);
+  if (p.mult >= 4 && !blue) renderFire(ctx, st, x);
   ctx.restore();
 }
 
-function renderCodePanel(ctx, x, y, w, h, p, tick) {
-  if (w <= 4) return;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
-
-  ctx.fillStyle = C.ideBg;
-  ctx.fillRect(x, y, w, h);
-
-  // Danger Prod Deploy Zone at top of IDE
-  ctx.fillStyle = '#290d16';
-  ctx.fillRect(x, y, w, 12);
-  drawText(ctx, '^^^ LIVE PROD DEPLOY LINE ^^^', x + 8, y + 3, C.syn);
-
-  const activeErr = getActiveErrorLine(p);
-
-  for (let i = 0; i < p.lines.length; i++) {
-    const ln = p.lines[i];
-    const ly = Math.round(ln.y);
-    if (ly < y + 10 || ly > y + h - 6) continue;
-
-    const isTarget = ln === activeErr;
-
-    if (ln.errType && ln.status === 'active') {
-      const bgCol = ln.errType === 'syn' ? C.synBg : ln.errType === 'hal' ? C.halBg : C.cybBg;
-      const fgCol = ln.errType === 'syn' ? C.syn : ln.errType === 'hal' ? C.hal : C.cyb;
-
-      ctx.fillStyle = bgCol;
-      ctx.fillRect(x + 2, ly - 2, w - 4, 12);
-
-      if (isTarget) {
-        const bCol = Math.floor(tick * 10) % 2 === 0 ? C.white : fgCol;
-        drawBox(ctx, x + 2, ly - 2, w - 4, 12, bgCol, bCol);
-      }
-
-      // Left type tag
-      const tag = ln.errType === 'syn' ? 'SYN' : ln.errType === 'hal' ? 'HAL' : 'CYB';
-      ctx.fillStyle = fgCol;
-      ctx.fillRect(x + 4, ly, 17, 8);
-      drawText(ctx, tag, x + 5, ly + 1, '#000000');
-
-      // Code text
-      drawText(ctx, ln.text, x + 24, ly + 1, C.white);
-
-      // Inline Combo Badges on the right side of the line
-      const comboW = ln.combo.length * 13 + 4;
-      const cx = Math.max(x + 24, x + w - comboW - 4);
-      ctx.fillStyle = '#07090f';
-      ctx.fillRect(cx - 2, ly - 1, comboW, 10);
-      drawComboBadges(ctx, ln.combo, ln.progress, cx, ly);
-    } else if (ln.status === 'fixed') {
-      ctx.fillStyle = '#0e291a';
-      ctx.fillRect(x + 2, ly - 1, w - 4, 10);
-      drawText(ctx, '// FIXED: ' + ln.text, x + 6, ly + 1, C.ok);
-    } else if (ln.status === 'failed') {
-      ctx.fillStyle = '#4a0e17';
-      ctx.fillRect(x + 2, ly - 1, w - 4, 10);
-      drawText(ctx, '!! LEAKING: ' + ln.text, x + 6, ly + 1, C.syn);
-    } else {
-      // Clean self-referential JS code line
-      const col = ln.text.startsWith('//')
-        ? C.codeStr
-        : ln.text.includes('function') || ln.text.includes('const') || ln.text.includes('if')
-          ? C.codeKw
-          : C.muted;
-      drawText(ctx, ln.text, x + 6, ly + 1, col);
-    }
+function renderFire(ctx, st, x) {
+  for (let i = 0; i < 24; i++) {
+    const fx = x + 4 + ((i * 53 + Math.floor(st.t * 30) * 7) % (PW - 8));
+    const h = 4 + ((i * 7 + Math.floor(st.t * 20)) % 10);
+    ctx.fillStyle = i % 3 ? C.hal : C.syn;
+    ctx.fillRect(fx, HDR_Y - h + 2, 4, h);
   }
-
-  // Render absurd Cyber Hack Popups over victim's IDE!
-  for (let i = 0; i < p.popups.length; i++) {
-    const pop = p.popups[i];
-    const jx = Math.floor(Math.sin(tick * 22 + i) * 2);
-    const px = x + Math.min(pop.ox, Math.max(4, w - 144)) + jx;
-    const py = pop.oy;
-    const pw = Math.min(140, w - 8);
-    const ph = 32;
-
-    drawBox(ctx, px, py, pw, ph, C.popupBg, pop.col);
-    ctx.fillStyle = pop.col;
-    ctx.fillRect(px, py, pw, 9);
-    drawText(ctx, pop.title, px + 4, py + 2, C.white);
-    drawText(ctx, '[X]', px + pw - 16, py + 2, C.white);
-    drawText(ctx, pop.body, px + 4, py + 13, '#0b0e17');
-    drawText(ctx, 'MASH B2 TO KILL PROCESS!', px + 4, py + 22, '#b33939');
-  }
-
-  ctx.restore();
 }
 
-function renderTerminalPanel(ctx, x, y, w, h, p, rival, tick) {
-  if (w <= 4) return;
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
+function renderHeader(ctx, st, p, x) {
+  const y = HDR_Y;
+  ctx.fillStyle = '#0a0e16';
+  ctx.fillRect(x + 2, y + 2, PW - 4, 54);
+  px(ctx, String(p.score).padStart(6, '0'), x + 12, y + 8, 4, C.white, 0);
+  txt(ctx, 'PUNTOS', x + 12, y + 36, C.muted, 10);
 
-  ctx.fillStyle = p.termFlash > 0 ? '#182436' : C.termBg;
-  ctx.fillRect(x, y, w, h);
-
-  const pCol = p.id === 1 ? C.p1 : C.p2;
-  const pct = Math.round(((p.id === 1 ? sceneWidthShare(p.id, w) : w) / VW) * 100);
-  drawText(
-    ctx,
-    `P${p.id} SCORE:${String(p.score).padStart(4, '0')}  SPACE:${pct}%  STREAK:${p.streak}`,
-    x + 6,
-    y + 4,
-    pCol,
-  );
-
-  // Priority 1: If Rival is Vulnerable, show neon HACK RIVAL prompt!
-  if (rival.vulnTimer > 0 && rival.hackCombo.length > 0) {
-    const pulse = Math.floor(tick * 10) % 2 === 0;
-    drawBox(ctx, x + 4, y + 14, w - 8, 22, C.cybBg, pulse ? C.white : C.cyb);
-    drawTextBold(ctx, 'HACK RIVAL:', x + 8, y + 22, C.cyb);
-    drawComboBadges(ctx, rival.hackCombo, p.hackProgress, x + 76, y + 21);
-  } else {
-    // Priority 2: Show active target error combo clearly in Terminal
-    const activeErr = getActiveErrorLine(p);
-    if (activeErr) {
-      const eCol =
-        activeErr.errType === 'syn' ? C.syn : activeErr.errType === 'hal' ? C.hal : C.cyb;
-      const label =
-        activeErr.errType === 'syn'
-          ? 'FIX SINTAXIS:'
-          : activeErr.errType === 'hal'
-            ? 'FIX HALUCIN:'
-            : `FIX CVE (${activeErr.chances}x):`;
-      drawBox(ctx, x + 4, y + 14, w - 8, 22, '#111625', eCol);
-      drawTextBold(ctx, label, x + 8, y + 22, eCol);
-      drawComboBadges(ctx, activeErr.combo, activeErr.progress, x + 84, y + 21);
-    } else {
-      drawBox(ctx, x + 4, y + 14, w - 8, 22, '#0d111c', C.border);
-      drawText(ctx, 'STATUS: ALL CHECKS PASSING...', x + 8, y + 22, C.ok);
-    }
+  // 0-DAY meter (fills with PERFECTs; when full, press 2 to hack)
+  const zx = x + 70;
+  txt(ctx, '0-DAY', zx, y + 36, p.zd >= 6 ? C.vul : C.muted, 10, true);
+  for (let i = 0; i < 6; i++) {
+    const on = i < p.zd;
+    ctx.fillStyle = on ? (p.zd >= 6 && Math.floor(st.t * 8) % 2 ? '#bfe0ff' : C.vul) : C.dim;
+    ctx.fillRect(zx + 40 + i * 15, y + 37, 12, 9);
+  }
+  if (p.zd >= 6 && st.phase === 'play') {
+    txt(ctx, 'APRIETA 2', x + 214, y + 8, Math.floor(st.t * 6) % 2 ? C.white : C.vul, 13, true, 1);
+    txt(ctx, '→ HACKEAR', x + 214, y + 22, Math.floor(st.t * 6) % 2 ? C.white : C.vul, 13, true, 1);
   }
 
-  // Terminal console log line at bottom
-  const logCol = p.termFlash > 0 ? p.termFlashCol : C.muted;
-  drawText(ctx, `$ ${p.termLog}`, x + 6, y + 42, logCol);
-  drawText(
-    ctx,
-    p.vulnTimer > 0 ? `!! CVE OPEN (${Math.ceil(p.vulnTimer)}s) !!` : `FIXED:${p.fixed} LEAK:${p.leaked}`,
-    x + 6,
-    y + 54,
-    p.vulnTimer > 0 ? C.syn : C.muted,
-  );
-
-  ctx.restore();
+  // Multiplier (Guitar Hero style): streak pips fill to the next level
+  const mx = x + PW - 70;
+  const mcol = [C.muted, C.ok, C.hal, p.col][p.mult - 1];
+  box(ctx, mx, y + 6, 60, 30, '#05070b', mcol);
+  px(ctx, `x${p.mult}`, mx + 30, y + 10, 4, mcol, 1);
+  for (let i = 0; i < 4; i++) {
+    const on = p.mult >= 4 || i < p.streak % 4;
+    ctx.fillStyle = on ? mcol : C.dim;
+    ctx.fillRect(mx + 2 + i * 15, y + 39, 12, 6);
+  }
+  if (p.zd < 6) txt(ctx, `racha ${p.streak}`, mx - 6, y + 36, C.muted, 10, false, 2);
 }
 
-function sceneWidthShare(id, w) {
-  return w;
-}
-
-function renderGameOverOverlay(scene, ctx) {
-  const st = scene.state;
-  ctx.fillStyle = 'rgba(7, 9, 15, 0.86)';
-  ctx.fillRect(0, 0, VW, VH);
-
-  const wCol = st.winner === 1 ? C.p1 : C.p2;
-  drawBox(ctx, 54, 38, 292, 224, '#101524', wCol);
-
-  drawTextBold(ctx, `PLAYER ${st.winner} WINS THE HACKATHON!`, 104, 54, wCol);
-  drawText(ctx, st.winReason, 86, 72, C.white);
-
-  drawText(
-    ctx,
-    `P1 SCORE: ${st.p1.score} (FIXED ${st.p1.fixed})   P2 SCORE: ${st.p2.score} (FIXED ${st.p2.fixed})`,
-    72,
-    94,
-    C.muted,
-  );
-
-  // 3-letter Arcade Tag Entry
-  drawTextBold(ctx, 'ENTER WINNER TAG:', 146, 120, C.hal);
+function renderEditor(ctx, st, p, x) {
+  const y0 = ED_Y;
+  ctx.fillStyle = '#080b12';
+  ctx.fillRect(x + 2, y0, PW - 4, ED_H);
+  // window chrome
+  ctx.fillStyle = '#111725';
+  ctx.fillRect(x + 2, y0, PW - 4, 16);
   for (let i = 0; i < 3; i++) {
-    const cx = 162 + i * 28;
-    const cy = 136;
-    const active = !st.saved && st.nameIdx === i;
-    drawBox(ctx, cx, cy, 20, 24, '#080b12', active ? C.ok : C.border);
-    drawTextBold(ctx, String.fromCharCode(st.nameChars[i]), cx + 7, cy + 9, active ? C.ok : C.white);
+    ctx.fillStyle = [C.syn, C.hal, C.ok][i];
+    ctx.fillRect(x + 10 + i * 10, y0 + 5, 6, 6);
   }
+  txt(ctx, `p${p.id}/demo.ts — clanker escribiendo…`, x + 46, y0 + 2, C.muted, 11);
+  ctx.fillStyle = C.gutter;
+  ctx.fillRect(x + 2, y0 + 16, 30, ED_H - 16);
 
-  if (!st.saved) {
-    drawText(ctx, 'JOYSTICK TO CHANGE LETTERS, B1/START TO SAVE', 84, 174, C.white);
-  } else {
-    drawTextBold(ctx, 'SCORE SAVED! PRESS START FOR REMATCH', 86, 174, C.ok);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x + 2, y0 + 16, PW - 4, ED_H - 16);
+  ctx.clip();
+  const n = p.lines.length;
+  const maxRows = Math.floor((ED_H - 22) / LINE_H);
+  const first = Math.max(0, n - maxRows);
+  const cw = G.cw;
+  for (let i = first; i < n; i++) {
+    const ln = p.lines[i];
+    const ly = y0 + 20 + (i - first) * LINE_H;
+    const age = n - 1 - i;
+    const active = ln.e && ln.st === 'act';
+    if (active || ln.st === 'bad' || ln.fixT > 0 || ln.st === 'ok') {
+      const tc = ln.st === 'ok' ? C.ok : TYPES[ln.e].col;
+      ctx.globalAlpha = active ? 0.28 + 0.12 * Math.sin(st.t * 12) : ln.st === 'ok' ? (ln.fixT > 0 ? 0.35 : 0.08) : 0.18;
+      ctx.fillStyle = tc;
+      ctx.fillRect(x + 32, ly - 2, PW - 34, LINE_H);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = tc;
+      ctx.fillRect(x + 32, ly - 2, 3, LINE_H);
+    }
+    if (ln.fixT > 0) ln.fixT -= 1 / 60;
+    txt(ctx, String(ln.no), x + 28, ly, active ? TYPES[ln.e].col : C.dim, 11, false, 2);
+    const shown = ln.s.slice(0, ln.n);
+    const fade = age > 8 ? 0.55 : 1;
+    ctx.globalAlpha = fade;
+    if (active && ln.e === 'hal') {
+      // hallucinations wobble and ghost
+      const j = Math.sin(st.t * 18) * 2;
+      txt(ctx, shown, x + 38 + j, ly + 1, 'rgba(255,174,0,0.35)', 12);
+      txt(ctx, shown, x + 38 - j * 0.5, ly, C.hal, 12, true);
+    } else if (active && ln.e === 'vul') {
+      txt(ctx, shown, x + 38, ly, '#9fcbff', 12, true);
+      txt(ctx, '⚠', x + PW - 20, ly, C.vul, 12, true);
+    } else if (active) {
+      txt(ctx, shown, x + 38, ly, '#ffb3bb', 12, true);
+      // red squiggle
+      ctx.fillStyle = C.syn;
+      const len = Math.min(shown.length * cw, PW - 44);
+      for (let k = 0; k < len; k += 4) ctx.fillRect(x + 38 + k, ly + 13 + ((k / 4) % 2), 3, 1);
+    } else if (ln.st === 'bad') {
+      txt(ctx, shown, x + 38, ly, '#c2697a', 12);
+      ctx.fillStyle = C.syn;
+      ctx.fillRect(x + 38, ly + 7, Math.min(shown.length * cw, PW - 44), 1);
+    } else if (ln.st === 'ok') {
+      txt(ctx, shown, x + 38, ly, C.ok, 12);
+    } else drawCode(ctx, shown, x + 38, ly);
+    ctx.globalAlpha = 1;
+    if (i === n - 1 && Math.floor(st.t * 3) % 2 === 0) {
+      ctx.fillStyle = p.col;
+      ctx.fillRect(x + 38 + shown.length * cw + 1, ly, 7, 13);
+    }
   }
+  ctx.restore();
 
-  // Mini leaderboard
-  drawText(ctx, 'HIGH SCORES:', 168, 198, C.p1);
-  for (let i = 0; i < Math.min(3, st.highScores.length); i++) {
-    const e = st.highScores[i];
-    drawText(
-      ctx,
-      `${i + 1}. ${e.tag} - ${e.score} PTS (${e.winner})`,
-      138,
-      212 + i * 11,
-      C.white,
-    );
+  if (p.lock > 0) renderHacked(ctx, st, p, x);
+}
+
+function drawCode(ctx, s, x, y) {
+  if (s.trimStart().startsWith('//')) return txt(ctx, s, x, y, C.com, 12);
+  const re = /("[^"]*"?|\b(?:const|let|await|async|return|function|import|from|export|default|if|for|new|throw|of)\b|\b\d+\b|[^"\w]+|\w+)/g;
+  let m;
+  let cx = x;
+  while ((m = re.exec(s))) {
+    const t = m[0];
+    const col = t[0] === '"' ? C.str : /^\d/.test(t) ? C.num : KW.has(t) ? C.kw : /\w/.test(t) ? '#d7def0' : '#8792ad';
+    txt(ctx, t, cx, y, col, 12);
+    cx += t.length * G.cw;
+  }
+}
+const KW = new Set(['const', 'let', 'await', 'async', 'return', 'function', 'import', 'from', 'export', 'default', 'if', 'for', 'new', 'throw', 'of']);
+
+function renderHacked(ctx, st, p, x) {
+  // glitch slices
+  for (let i = 0; i < 6; i++) {
+    const sy = ED_Y + 16 + Math.random() * (ED_H - 30);
+    const sh = 4 + Math.random() * 14;
+    ctx.fillStyle = Math.random() < 0.5 ? 'rgba(61,155,255,0.35)' : 'rgba(255,40,80,0.35)';
+    ctx.fillRect(x + 2 + rnd(20), sy, PW - 4, sh);
+  }
+  for (const pop of p.popups) {
+    const [title, body] = POPUPS[pop.k];
+    const px0 = x + pop.x + rnd(2);
+    const py0 = pop.y + rnd(2);
+    box(ctx, px0, py0, 220, 46, '#d8dee9', C.syn);
+    ctx.fillStyle = C.syn;
+    ctx.fillRect(px0, py0, 220, 14);
+    txt(ctx, title, px0 + 5, py0 + 1, '#fff', 11, true);
+    txt(ctx, '[X]', px0 + 198, py0 + 1, '#fff', 11, true);
+    txt(ctx, body, px0 + 6, py0 + 20, '#111', 12, true);
   }
 }
 
-// ============================================================================
-// PIXEL FONT, COMBO BADGES & SELF-REFERENTIAL CODE POOL
-// ============================================================================
+function renderAction(ctx, st, p, rival, x) {
+  const y = ACT_Y;
+  const pr = p.prompt;
+  ctx.fillStyle = '#05070c';
+  ctx.fillRect(x + 2, y, PW - 4, ACT_H);
 
-function drawComboBadges(ctx, combo, progress, x, y) {
-  for (let i = 0; i < combo.length; i++) {
-    const step = combo[i];
-    const bx = x + i * 13;
-    const done = i < progress;
-    const isNext = i === progress;
+  if (p.lock > 0) {
+    // HACKED: skull + mash meter
+    const j = rnd(3);
+    drawSkull(ctx, x + 30 + j, y + 22, 5, Math.floor(st.t * 8) % 2 ? C.syn : C.white);
+    px(ctx, 'HACKEADO', x + 230, y + 18, 4, C.syn, 1);
+    txt(ctx, '¡MACHACA 1 Y 2 PARA', x + 230, y + 56, C.white, 13, true, 1);
+    txt(ctx, 'MATAR EL VIRUS!', x + 230, y + 73, C.white, 13, true, 1);
+    box(ctx, x + 130, y + 100, 200, 18, '#000', C.syn);
+    ctx.fillStyle = C.ok;
+    ctx.fillRect(x + 133, y + 103, (194 * Math.min(14, p.mash)) / 14, 12);
+    txt(ctx, `kill -9 · ${Math.ceil(p.lock)}s`, x + 230, y + 124, C.muted, 11, false, 1);
+  } else if (pr) {
+    const T = TYPES[pr.type];
+    const waiting = pr.wait > 0;
+    ctx.fillStyle = T.bg;
+    ctx.fillRect(x + 2, y, PW - 4, ACT_H);
+    ctx.fillStyle = T.col;
+    ctx.fillRect(x + 2, y, PW - 4, 4);
+    // Type label + icon
+    drawIcon(ctx, pr.type, x + 12, y + 12, T.col);
+    px(ctx, T.name, x + 44, y + 12, 3, T.col, 0);
+    txt(ctx, T.how, x + PW - 12, y + 14, Math.floor(st.t * 4) % 2 && pr.type === 'hal' ? C.white : T.col, 12, true, 2);
 
-    const bg = done ? C.ok : step === 'B1' ? '#1e90ff' : step === 'B2' ? C.cyb : '#2f3542';
-    const border = isNext ? C.white : done ? C.ok : C.border;
-    ctx.fillStyle = bg;
-    ctx.fillRect(bx, y, 11, 8);
-    ctx.fillStyle = border;
-    ctx.fillRect(bx, y, 11, 1);
+    // Big keycaps — the combo you have to enter, one at a time
+    const n = pr.seq.length;
+    const size = n > 5 ? 44 : 52;
+    const gap = 8;
+    const tw = n * size + (n - 1) * gap;
+    const kx = x + (PW - tw) / 2;
+    const ky = y + 42 + (pr.err > 0 ? rnd(4) : 0);
+    if (pr.err > 0) pr.err -= 1 / 60;
+    if (pr.pop > 0) pr.pop -= 1 / 60;
+    for (let i = 0; i < n; i++) {
+      const cx = kx + i * (size + gap);
+      const done = i < pr.i;
+      const next = i === pr.i && !waiting;
+      const lift = next ? -3 - (pr.pop > 0 ? 3 : 0) : 0;
+      const wob = pr.type === 'hal' && !done ? Math.sin(st.t * 9 + i) * 2 : 0;
+      const bg = done ? C.ok : pr.err > 0 ? '#4a0d18' : next ? '#1d2434' : '#0e131d';
+      const bd = done ? C.ok : next ? C.white : waiting ? C.dim : T.col;
+      box(ctx, cx, ky + lift + wob, size, size, bg, bd);
+      if (next) frame(ctx, cx - 3, ky + lift + wob - 3, size + 6, size + 6, Math.floor(st.t * 10) % 2 ? T.col : C.white, 2);
+      const tok = done ? pr.exp[i] : pr.seq[i];
+      drawKey(ctx, tok, cx + size / 2, ky + lift + wob + size / 2, done ? '#062012' : waiting ? C.dim : next ? C.white : T.col, size > 46 ? 5 : 4);
+    }
 
-    const fg = done ? '#000000' : C.white;
-    if (step === 'U') drawArrowGlyph(ctx, bx + 3, y + 2, 0, fg);
-    else if (step === 'D') drawArrowGlyph(ctx, bx + 3, y + 2, 1, fg);
-    else if (step === 'L') drawArrowGlyph(ctx, bx + 3, y + 2, 2, fg);
-    else if (step === 'R') drawArrowGlyph(ctx, bx + 3, y + 2, 3, fg);
-    else drawText(ctx, step, bx + 1, y + 1, fg);
+    // Timer bar with the PERFECT zone marked
+    const by = y + 112;
+    const bw = PW - 40;
+    const left = 1 - pr.t / pr.dur;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x + 20, by, bw, 12);
+    ctx.fillStyle = left > 0.55 ? C.ok : left > 0.25 ? C.hal : C.syn;
+    ctx.fillRect(x + 20, by, bw * left, 12);
+    ctx.fillStyle = C.white;
+    ctx.fillRect(x + 20 + bw * 0.55, by - 2, 2, 16);
+    txt(ctx, '◀ PERFECTO', x + 20 + bw * 0.55 + 4, by - 11, C.muted, 9);
+    if (pr.type === 'hal' && !waiting) txt(ctx, 'si ves ↑ aprieta ↓ · si ves ← aprieta →', x + PW / 2, by + 16, C.hal, 11, true, 1);
+    if (waiting) {
+      ctx.globalAlpha = 0.85;
+      ctx.fillStyle = '#000';
+      ctx.fillRect(x + 2, y + 40, PW - 4, 60);
+      ctx.globalAlpha = 1;
+      px(ctx, pr.type === 'hack' ? 'PREPARA EL EXPLOIT' : 'ALERTA DE INTRUSO', x + PW / 2, y + 62, 3, T.col, 1);
+    }
+  } else if (st.phase === 'play' && !p.floats.length) {
+    px(ctx, 'BUILD OK', x + PW / 2, y + 50, 4, '#18402c', 1);
+    txt(ctx, '> esperando el próximo error_', x + PW / 2, y + 90, C.dim, 12, false, 1);
+  } else if (st.phase === 'count') {
+    txt(ctx, '> compilando...', x + PW / 2, y + 70, C.muted, 13, false, 1);
+  }
+
+  // Floating judgement text (PERFECTO / BIEN / FALLO)
+  for (const f of p.floats) {
+    ctx.globalAlpha = Math.min(1, f.t * 2);
+    const yy = f.y;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(x + 40, yy - 4, PW - 80, f.sub ? 54 : 36);
+    px(ctx, f.s, x + PW / 2, yy, 4, f.col, 1);
+    if (f.sub) txt(ctx, f.sub, x + PW / 2, yy + 30, C.white, 14, true, 1);
+    ctx.globalAlpha = 1;
   }
 }
 
-function drawArrowGlyph(ctx, x, y, dir, col) {
-  ctx.fillStyle = col;
-  // 5x5 crisp pixel arrow
-  const maps = [
-    ['00100', '01110', '10101', '00100', '00100'], // U
-    ['00100', '00100', '10101', '01110', '00100'], // D
-    ['00100', '01000', '11111', '01000', '00100'], // L
-    ['00100', '00010', '11111', '00010', '00100'], // R
+function renderFooter(ctx, st, p, x) {
+  const y = FT_Y;
+  ctx.fillStyle = '#0a0e16';
+  ctx.fillRect(x + 2, y, PW - 4, H - y - 8);
+  const s = p.stab;
+  const label = s > 60 ? 'DEMO ESTABLE' : s > 30 ? 'DEMO INESTABLE' : '¡LA DEMO SE CAE!';
+  const lcol = s > 60 ? C.ok : s > 30 ? C.hal : C.syn;
+  txt(ctx, label, x + 12, y + 6, s <= 30 && Math.floor(st.t * 6) % 2 ? C.white : lcol, 12, true);
+  txt(ctx, `${Math.round(s)}%`, x + PW - 12, y + 6, lcol, 12, true, 2);
+  // Segmented "rock meter"
+  const segs = 25;
+  const sw = (PW - 24) / segs;
+  for (let i = 0; i < segs; i++) {
+    const f = i / segs;
+    const on = f < s / 100;
+    ctx.fillStyle = on ? (f < 0.3 ? C.syn : f < 0.6 ? C.hal : C.ok) : C.dim;
+    ctx.fillRect(x + 12 + i * sw, y + 24, sw - 2, 14);
+  }
+
+  // Judges react to your demo
+  const mood = p.mood || (s > 66 ? 1 : s < 33 ? -1 : 0);
+  for (let i = 0; i < 3; i++) {
+    const bounce = p.mood && Math.floor(st.t * 8 + i) % 2 ? -3 : 0;
+    drawJudge(ctx, x + 14 + i * 40, y + 50 + bounce, mood, i);
+  }
+  box(ctx, x + 134, y + 52, PW - 146, 34, '#05070b', mood > 0 ? C.ok : mood < 0 ? C.syn : C.dim);
+  ctx.fillStyle = mood > 0 ? C.ok : mood < 0 ? C.syn : C.dim;
+  ctx.fillRect(x + 128, y + 64, 6, 6);
+  txt(ctx, `"${p.quip}"`, x + 144, y + 61, C.white, 13, true);
+  txt(ctx, 'JUECES', x + 14, y + 96, C.muted, 10);
+
+  // CLI status line
+  ctx.fillStyle = '#05070b';
+  ctx.fillRect(x + 8, y + 112, PW - 16, 20);
+  txt(ctx, `$ ${p.log}`, x + 14, y + 115, p.flash > 0 ? p.flashCol : '#8a96b4', 12);
+}
+
+function renderJoin(ctx, st) {
+  ctx.fillStyle = 'rgba(5,7,12,0.86)';
+  ctx.fillRect(0, 0, W, H);
+  px(ctx, 'ELIGE MODO', W / 2, 140, 6, C.white, 1);
+  for (let i = 0; i < 2; i++) {
+    const x = 120 + i * 320;
+    const ready = st.humans[i];
+    const col = i === 0 ? C.p1 : C.p2;
+    box(ctx, x - 100, 220, 200, 150, ready ? '#111a10' : '#0d1119', ready ? col : C.dim);
+    px(ctx, `P${i + 1}`, x, 240, 6, ready ? col : C.dim, 1);
+    txt(ctx, ready ? '¡LISTO!' : 'PRESIONA START', x, 300, ready ? C.white : Math.floor(st.t * 3) % 2 ? C.white : C.muted, 15, true, 1);
+    txt(ctx, ready ? 'humano' : 'o juega la CPU', x, 330, C.muted, 13, false, 1);
+  }
+  const left = Math.max(0, Math.ceil(5 - st.phaseT));
+  txt(ctx, `La partida empieza en ${left}s`, W / 2, 410, C.muted, 15, false, 1);
+}
+
+function renderCount(ctx, st) {
+  const n = Math.ceil(3 - st.phaseT);
+  ctx.fillStyle = 'rgba(5,7,12,0.5)';
+  ctx.fillRect(0, 230, W, 140);
+  const s = n > 0 ? String(n) : '¡DEPLOY!';
+  const k = 10 + (1 - (st.phaseT % 1)) * 4;
+  px(ctx, s, W / 2, 300 - k * 3, Math.round(k), C.white, 1);
+  txt(ctx, 'Arregla cada error antes de que se acabe la barra', W / 2, 352, C.muted, 14, true, 1);
+}
+
+function renderBanner(ctx, st) {
+  const b = st.banner;
+  const e = Math.min(1, (b.dur - b.t) * 6, b.t * 4);
+  const h = 120 * e;
+  const y = H / 2 - h / 2;
+  ctx.fillStyle = 'rgba(0,0,0,0.85)';
+  ctx.fillRect(0, y, W, h);
+  ctx.fillStyle = b.col;
+  ctx.fillRect(0, y, W, 4);
+  ctx.fillRect(0, y + h - 4, W, 4);
+  for (let i = 0; i < 20; i++) {
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(((i * 60 + st.t * 300) % (W + 60)) - 60, y, 20, h);
+  }
+  ctx.globalAlpha = 1;
+  if (e > 0.8) {
+    px(ctx, b.s, W / 2 + rnd(2), H / 2 - 32, 6, b.col, 1);
+    txt(ctx, b.sub, W / 2, H / 2 + 18, C.white, 18, true, 1);
+  }
+}
+
+function renderOver(ctx, st) {
+  ctx.fillStyle = 'rgba(5,7,12,0.9)';
+  ctx.fillRect(0, 0, W, H);
+  const wp = st.p[st.winner - 1];
+  px(ctx, `GANA P${st.winner}`, W / 2, 60, 9, wp.col, 1);
+  txt(ctx, st.reason, W / 2, 128, C.white, 16, true, 1);
+  // stats table
+  const rows = [
+    ['PUNTOS', (p) => p.score],
+    ['ARREGLOS', (p) => p.stats.fix],
+    ['PERFECTOS', (p) => p.stats.perf],
+    ['FALLOS', (p) => p.stats.miss],
+    ['HACKEOS', (p) => p.stats.hacks],
   ];
-  const m = maps[dir];
+  for (let i = 0; i < 2; i++) {
+    const p = st.p[i];
+    const cx = i === 0 ? 250 : 550;
+    px(ctx, `P${p.id}`, cx, 168, 3, p.col, 1);
+    txt(ctx, p.cpu ? 'CPU' : 'HUMANO', cx, 190, C.muted, 11, false, 1);
+    rows.forEach((r, j) => txt(ctx, String(r[1](p)), cx, 210 + j * 22, j === 0 ? C.white : '#aab4cc', 15, j === 0, 1));
+  }
+  rows.forEach((r, j) => txt(ctx, r[0], W / 2, 212 + j * 22, C.muted, 12, false, 1));
+
+  if (st.phaseT < 1.2) return;
+  if (!st.saved) {
+    txt(ctx, `P${st.winner}: ESCRIBE TU TAG (joystick · botón 1 guarda)`, W / 2, 340, C.hal, 14, true, 1);
+    for (let i = 0; i < 3; i++) {
+      const cx = W / 2 - 75 + i * 52;
+      const act = st.tagIdx === i;
+      box(ctx, cx, 366, 46, 56, '#05070b', act ? wp.col : C.dim);
+      px(ctx, String.fromCharCode(st.tag[i]), cx + 23, 380, 5, act ? wp.col : C.white, 1);
+    }
+  } else {
+    txt(ctx, 'MEJORES CLANKERS', W / 2, 340, C.hal, 14, true, 1);
+    st.highScores.slice(0, 5).forEach((e, i) => {
+      txt(ctx, `${i + 1}. ${e.tag}   ${String(e.score).padStart(6, '0')}`, W / 2, 364 + i * 20, i ? C.white : C.ok, 14, false, 1);
+    });
+    if (Math.floor(st.t * 2) % 2) txt(ctx, 'PRESIONA START PARA LA REVANCHA', W / 2, 480, C.white, 16, true, 1);
+  }
+}
+
+function renderTitle(ctx, st) {
+  // streaming code backdrop
+  const tc = st.titleCode;
+  ctx.globalAlpha = 0.14;
+  tc.lines.forEach((ln, i) => drawCode(ctx, ln.s.slice(0, ln.n), 30, 20 + i * 36));
+  ctx.globalAlpha = 1;
+
+  const g = Math.floor(st.t * 2) % 7 === 0 ? 3 : 0;
+  px(ctx, 'FASTER', W / 2 - g, 22, 9, C.p2, 1);
+  px(ctx, 'FASTER', W / 2 + g, 20, 9, C.white, 1);
+  px(ctx, 'CLANKER', W / 2 + g, 84, 9, C.p1, 1);
+  txt(ctx, 'Eres la IA. El código se escribe solo. Arregla los errores antes de la demo.', W / 2, 150, C.white, 14, true, 1);
+
+  // How to play: the three error types
+  const cards = [
+    ['syn', 'Repite las flechas.', 'Rápido y frecuente.', ['U', 'R', '1']],
+    ['hal', 'Haz las flechas AL REVÉS.', '↑ significa ↓', ['U', 'L', 'D']],
+    ['vul', 'Combo largo. Si fallas,', 'el rival te HACKEA.', ['L', 'U', 'R', 'D', '1']],
+  ];
+  cards.forEach((c, i) => {
+    const T = TYPES[c[0]];
+    const x = 28 + i * 252;
+    box(ctx, x, 180, 240, 150, T.bg, T.col);
+    drawIcon(ctx, c[0], x + 12, 192, T.col);
+    px(ctx, T.name, x + 44, 192, 3, T.col, 0);
+    txt(ctx, c[1], x + 14, 226, C.white, 13, true);
+    txt(ctx, c[2], x + 14, 244, '#c6cee0', 13);
+    c[3].forEach((d, j) => {
+      const kx = x + 14 + j * 40;
+      box(ctx, kx, 274, 34, 34, '#0b0f18', T.col);
+      drawKey(ctx, d, kx + 17, 291, C.white, 3);
+    });
+  });
+
+  // Hack explanation
+  box(ctx, 28, 344, 744, 58, '#081a33', C.vul);
+  px(ctx, 'HACKEO', 44, 358, 3, C.vul, 0);
+  txt(ctx, '6 PERFECTOS llenan tu 0-DAY → aprieta 2 para atacar.', 150, 354, C.white, 13, true);
+  txt(ctx, 'Carrera: tú HACKEAS y el rival PARCHEA. El más rápido gana y roba puntos.', 150, 374, '#c6cee0', 12);
+
+  // Controls + scores
+  box(ctx, 28, 414, 360, 112, '#0d1119', C.dim);
+  px(ctx, 'CONTROLES', 44, 426, 2, C.white, 0);
+  txt(ctx, 'JOYSTICK  → flechas del combo', 44, 450, '#c6cee0', 13);
+  txt(ctx, 'BOTÓN 1   → cuando el combo pide (1)', 44, 470, '#c6cee0', 13);
+  txt(ctx, 'BOTÓN 2   → lanzar 0-DAY / matar virus', 44, 490, '#c6cee0', 13);
+  txt(ctx, 'Racha = multiplicador x4. Demo al 0% = pierdes.', 44, 508, C.muted, 11);
+  box(ctx, 412, 414, 360, 112, '#0d1119', C.dim);
+  px(ctx, 'MEJORES CLANKERS', 428, 426, 2, C.hal, 0);
+  if (!st.highScores.length) txt(ctx, 'Sin puntajes aún. ¡Sé el primero!', 428, 460, C.muted, 13);
+  st.highScores.slice(0, 4).forEach((e, i) => {
+    txt(ctx, `${i + 1}. ${e.tag}`, 428, 448 + i * 18, i ? C.white : C.ok, 13, true);
+    txt(ctx, String(e.score).padStart(6, '0'), 756, 448 + i * 18, i ? C.white : C.ok, 13, true, 2);
+  });
+
+  const on = Math.floor(st.t * 2.5) % 2;
+  box(ctx, 200, 540, 400, 44, on ? '#14230a' : '#0d1119', on ? C.p1 : C.dim);
+  px(ctx, 'PRESIONA START', W / 2, 552, 3, on ? C.p1 : C.white, 1);
+}
+
+// --- drawing primitives -------------------------------------------------------
+
+function txt(ctx, s, x, y, col, size, bold, align) {
+  ctx.font = `${bold ? 'bold ' : ''}${size || 12}px "DejaVu Sans Mono", Menlo, Consolas, monospace`;
+  ctx.textAlign = align === 1 ? 'center' : align === 2 ? 'right' : 'left';
+  ctx.fillStyle = col;
+  ctx.fillText(s, x, y);
+}
+
+// Chunky pixel font. align: 0 left, 1 center, 2 right
+function px(ctx, s, x, y, k, col, align) {
+  s = s.normalize('NFD').replace(/[^\x20-\x7e]/g, '');
+  const w = s.length * 5 * k - k;
+  let cx = Math.round(align === 1 ? x - w / 2 : align === 2 ? x - w : x);
+  y = Math.round(y);
+  ctx.fillStyle = col;
+  for (let i = 0; i < s.length; i++) {
+    const g = G.glyphs[s.charCodeAt(i) - 32];
+    if (g) for (const [gx, gy] of g) ctx.fillRect(cx + gx * k, y + gy * k, k, k);
+    cx += 5 * k;
+  }
+}
+
+const ARROW = ['00100', '01110', '11111', '00100', '00100'];
+
+function drawKey(ctx, tok, cx, cy, col, k) {
+  ctx.fillStyle = col;
+  if (tok === '1' || tok === '2') {
+    // round button
+    const r = k * 3.2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#05070b';
+    ctx.beginPath();
+    ctx.arc(cx, cy, r - k, 0, Math.PI * 2);
+    ctx.fill();
+    const s = Math.max(1, Math.round(k * 0.6));
+    px(ctx, tok, cx + s / 2, cy - 3 * s, s, col, 1);
+    return;
+  }
+  // 5x5 arrow bitmap pointing up; rotated per direction
+  const rot = { U: 0, R: 1, D: 2, L: 3 }[tok];
   for (let r = 0; r < 5; r++) {
     for (let c = 0; c < 5; c++) {
-      if (m[r][c] === '1') ctx.fillRect(x + c, y + r, 1, 1);
+      if (ARROW[r][c] !== '1') continue;
+      let ax = c - 2;
+      let ay = r - 2;
+      for (let q = 0; q < rot; q++) [ax, ay] = [-ay, ax];
+      ctx.fillRect(Math.round(cx + ax * k - k / 2), Math.round(cy + ay * k - k / 2), k, k);
     }
   }
 }
 
-function drawBox(ctx, x, y, w, h, bg, borderCol) {
+function drawIcon(ctx, type, x, y, col) {
+  ctx.fillStyle = col;
+  if (type === 'syn') px(ctx, '{}', x - 2, y, 3, col, 0);
+  else if (type === 'hal') {
+    // eye
+    ctx.fillRect(x + 2, y + 6, 20, 2);
+    ctx.fillRect(x + 6, y + 2, 12, 2);
+    ctx.fillRect(x + 6, y + 10, 12, 2);
+    ctx.fillRect(x + 10, y + 4, 4, 6);
+  } else {
+    // padlock
+    ctx.fillRect(x + 4, y + 8, 16, 11);
+    ctx.fillRect(x + 7, y, 2, 9);
+    ctx.fillRect(x + 15, y, 2, 9);
+    ctx.fillRect(x + 7, y, 10, 2);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(x + 11, y + 11, 2, 5);
+  }
+}
+
+const SKULL = ['0111110', '1111111', '1001001', '1001001', '1111111', '0110110', '0101010'];
+
+function drawSkull(ctx, x, y, k, col) {
+  ctx.fillStyle = col;
+  for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) if (SKULL[r][c] === '1') ctx.fillRect(x + c * k * 2, y + r * k * 2, k * 2, k * 2);
+}
+
+function drawJudge(ctx, x, y, mood, v) {
+  const skin = ['#ffdbac', '#e0ac69', '#8d5524'][v];
+  ctx.fillStyle = mood < 0 ? '#ff8a8a' : skin;
+  ctx.fillRect(x + 4, y + 4, 22, 22);
+  ctx.fillStyle = ['#2f3542', '#c0392b', '#f1c40f'][v];
+  ctx.fillRect(x + 2, y, 26, 7);
+  ctx.fillStyle = '#000';
+  if (mood > 0) {
+    ctx.fillRect(x + 5, y + 11, 20, 4); // sunglasses
+    ctx.fillRect(x + 9, y + 19, 12, 3);
+    ctx.fillRect(x + 8, y + 18, 2, 2);
+    ctx.fillRect(x + 20, y + 18, 2, 2);
+  } else if (mood < 0) {
+    ctx.fillRect(x + 7, y + 9, 5, 2);
+    ctx.fillRect(x + 18, y + 9, 5, 2);
+    ctx.fillRect(x + 9, y + 12, 3, 3);
+    ctx.fillRect(x + 18, y + 12, 3, 3);
+    ctx.fillRect(x + 10, y + 19, 10, 4);
+  } else {
+    ctx.fillRect(x + 9, y + 12, 3, 3);
+    ctx.fillRect(x + 18, y + 12, 3, 3);
+    ctx.fillRect(x + 11, y + 20, 8, 2);
+  }
+  ctx.fillStyle = ['#3742fa', '#2f3542', '#16a085'][v];
+  ctx.fillRect(x + 1, y + 26, 28, 8);
+}
+
+function box(ctx, x, y, w, h, bg, bd) {
   ctx.fillStyle = bg;
   ctx.fillRect(x, y, w, h);
-  ctx.fillStyle = borderCol;
-  ctx.fillRect(x, y, w, 1);
-  ctx.fillRect(x, y + h - 1, w, 1);
-  ctx.fillRect(x, y, 1, h);
-  ctx.fillRect(x + w - 1, y, 1, h);
+  frame(ctx, x, y, w, h, bd, 2);
 }
 
-function buildFontCache(scene) {
-  // Decode 4x6 bitmaps once for ultra-fast integer pixel rendering
-  scene.glyphs = FONT_HEX.map((hex) => {
-    const coords = [];
-    for (let r = 0; r < 6; r++) {
-      const nib = parseInt(hex[r], 16);
-      for (let c = 0; c < 4; c++) {
-        if ((nib >> (3 - c)) & 1) coords.push([c, r]);
-      }
-    }
-    return coords;
-  });
+function frame(ctx, x, y, w, h, col, t) {
+  ctx.fillStyle = col;
+  ctx.fillRect(x, y, w, t);
+  ctx.fillRect(x, y + h - t, w, t);
+  ctx.fillRect(x, y, t, h);
+  ctx.fillRect(x + w - t, y, t, h);
 }
 
-function drawText(ctx, str, x, y, color) {
-  if (!str) return;
-  ctx.fillStyle = color;
-  const glyphs = window._fcGlyphs;
-  let cx = x | 0;
-  const cy = y | 0;
-  for (let i = 0; i < str.length; i++) {
-    const code = str.charCodeAt(i) - 32;
-    const g = glyphs[code];
-    if (g) {
-      for (let j = 0; j < g.length; j++) {
-        ctx.fillRect(cx + g[j][0], cy + g[j][1], 1, 1);
-      }
-    }
-    cx += 5;
-  }
-}
-
-function drawTextBold(ctx, str, x, y, color) {
-  drawText(ctx, str, x, y, '#000000');
-  drawText(ctx, str, x, y - 1, color);
-}
-
-function buildSelfCodePool(scene) {
-  window._fcGlyphs = scene.glyphs;
-  // Extract our own source code functions at runtime!
-  const fns = [
-    updateMatch,
-    updatePlayer,
-    spawnCodeLine,
-    handlePlayerInput,
-    onErrorFixed,
-    executeHackOnRival,
-    renderGameplay,
-  ];
-  const rawLines = [];
-  const jokes = [
-    '// TODO: ask Claude why this works',
-    '// DO NOT TOUCH OR DEMO EXPLODES',
-    'console.log("LLEGO AQUI 12345");',
-    '// vibecoded at 4:12 AM on Mate',
-    'const aiConfidence = 999.9;',
-  ];
-  for (let i = 0; i < fns.length; i++) {
-    const lines = fns[i].toString().split('\n');
-    for (let j = 0; j < lines.length; j++) {
-      const t = lines[j].trim();
-      if (t.length >= 6) {
-        rawLines.push(t.slice(0, 48));
-        if (rawLines.length % 7 === 0) {
-          rawLines.push(jokes[Math.floor(rawLines.length / 7) % jokes.length]);
-        }
-      }
-    }
-  }
-  scene.codePool = rawLines;
+function rnd(a) {
+  return (Math.random() * 2 - 1) * a;
 }
 
 // ============================================================================
-// CONTROLS, 8-BIT SYNTH & STORAGE
+// CONTROLS, SYNTH & STORAGE
 // ============================================================================
 
 function createControls(scene) {
-  scene.controls = {
-    held: Object.create(null),
-    pressed: Object.create(null),
-  };
-
+  scene.controls = { held: Object.create(null), pressed: Object.create(null) };
   const onKeyDown = (event) => {
     const code = KEYBOARD_TO_ARCADE[normalizeKey(event.key)];
     if (!code) return;
-    if (!scene.controls.held[code]) {
-      scene.controls.pressed[code] = true;
-    }
+    if (!scene.controls.held[code]) scene.controls.pressed[code] = true;
     scene.controls.held[code] = true;
   };
-
   const onKeyUp = (event) => {
     const code = KEYBOARD_TO_ARCADE[normalizeKey(event.key)];
-    if (!code) return;
-    scene.controls.held[code] = false;
+    if (code) scene.controls.held[code] = false;
   };
-
   window.addEventListener('keydown', onKeyDown);
   window.addEventListener('keyup', onKeyUp);
   scene.events.once('shutdown', () => {
@@ -1335,98 +1568,62 @@ function consumePressed(scene, code) {
   return false;
 }
 
-function startMusic(scene) {
-  if (scene.musicStarted) return;
-  scene.musicStarted = true;
+function audio(scene) {
+  return scene.sound && scene.sound.context ? scene.sound.context : null;
+}
+
+function unlockAudio(scene) {
+  const ctx = audio(scene);
+  if (ctx && ctx.state === 'suspended') ctx.resume();
+}
+
+function tone(scene, f, dur, type, vol, f2, delay) {
   try {
-    const ctx = scene.sound && scene.sound.context ? scene.sound.context : null;
+    const ctx = audio(scene);
     if (!ctx) return;
-    const notes = [110, 130.81, 146.83, 164.81, 146.83, 130.81, 196, 164.81];
-    let step = 0;
-    scene.time.addEvent({
-      delay: 180,
-      loop: true,
-      callback: () => {
-        if (!scene.state || scene.state.phase !== 'playing') return;
-        const osc = ctx.createOscillator();
-        const g = ctx.createGain();
-        osc.type = 'triangle';
-        const mult = scene.state.speedMult > 1.8 ? 1.25 : 1;
-        osc.frequency.setValueAtTime(notes[step % notes.length] * mult, ctx.currentTime);
-        g.gain.setValueAtTime(0.04, ctx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.14);
-        osc.connect(g);
-        g.connect(ctx.destination);
-        osc.start();
-        osc.stop(ctx.currentTime + 0.15);
-        step++;
-      },
-    });
+    const t = ctx.currentTime + (delay || 0);
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+    g.gain.setValueAtTime(vol, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g);
+    g.connect(ctx.destination);
+    o.start(t);
+    o.stop(t + dur + 0.02);
   } catch (_) {}
 }
 
-function playSound(scene, type) {
+function noise(scene, dur, vol) {
   try {
-    const ctx = scene.sound && scene.sound.context ? scene.sound.context : null;
+    const ctx = audio(scene);
     if (!ctx) return;
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    const now = ctx.currentTime;
-
-    if (type === 'key') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(920, now);
-      gain.gain.setValueAtTime(0.07, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
-      osc.start(now);
-      osc.stop(now + 0.035);
-    } else if (type === 'fix') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(523.25, now);
-      osc.frequency.setValueAtTime(783.99, now + 0.04);
-      osc.frequency.setValueAtTime(1046.5, now + 0.08);
-      gain.gain.setValueAtTime(0.12, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.14);
-      osc.start(now);
-      osc.stop(now + 0.15);
-    } else if (type === 'warn') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.setValueAtTime(330, now + 0.07);
-      gain.gain.setValueAtTime(0.15, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-      osc.start(now);
-      osc.stop(now + 0.17);
-    } else if (type === 'fail') {
-      osc.type = 'sawtooth';
-      osc.frequency.setValueAtTime(200, now);
-      osc.frequency.linearRampToValueAtTime(85, now + 0.18);
-      gain.gain.setValueAtTime(0.18, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
-      osc.start(now);
-      osc.stop(now + 0.21);
-    } else if (type === 'hack') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(880, now);
-      osc.frequency.setValueAtTime(220, now + 0.05);
-      osc.frequency.setValueAtTime(660, now + 0.1);
-      osc.frequency.setValueAtTime(1760, now + 0.15);
-      gain.gain.setValueAtTime(0.2, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
-      osc.start(now);
-      osc.stop(now + 0.27);
-    } else if (type === 'start') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(440, now);
-      osc.frequency.setValueAtTime(880, now + 0.08);
-      gain.gain.setValueAtTime(0.14, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
-      osc.start(now);
-      osc.stop(now + 0.19);
-    }
+    const len = Math.floor(ctx.sampleRate * dur);
+    const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * vol * (1 - i / len);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start();
   } catch (_) {}
+}
+
+// Driving bassline whose tempo rises with the match
+const BASS = [55, 55, 82.4, 55, 73.4, 55, 65.4, 73.4];
+
+function music(scene, dt) {
+  const st = scene.st;
+  st.beat -= dt;
+  if (st.beat > 0) return;
+  st.beat += 0.16 - 0.05 * st.lv;
+  const i = st.beatStep++;
+  const up = st.timeLeft <= 15 ? 2 : 1;
+  tone(scene, BASS[i % 8] * up * (Math.floor(i / 16) % 2 ? 1.19 : 1), 0.13, 'triangle', 0.07);
+  if (i % 2) tone(scene, 6000, 0.02, 'square', 0.012);
+  if (st.race && i % 2 === 0) tone(scene, 1760, 0.04, 'square', 0.03);
 }
 
 function getStorage() {
@@ -1452,7 +1649,7 @@ async function loadHighScores() {
   try {
     const res = await getStorage().get(STORAGE_KEY);
     if (res && res.found && Array.isArray(res.value)) {
-      return res.value.slice(0, 5);
+      return res.value.filter((e) => e && typeof e.tag === 'string' && typeof e.score === 'number').slice(0, 5);
     }
   } catch (_) {}
   return [];
@@ -1460,8 +1657,8 @@ async function loadHighScores() {
 
 async function saveHighScore(scene, entry) {
   try {
-    const list = scene.state.highScores.concat(entry).sort((a, b) => b.score - a.score).slice(0, 5);
-    scene.state.highScores = list;
+    const list = scene.st.highScores.concat(entry).sort((a, b) => b.score - a.score).slice(0, 5);
+    scene.st.highScores = list;
     await getStorage().set(STORAGE_KEY, list);
   } catch (_) {}
 }

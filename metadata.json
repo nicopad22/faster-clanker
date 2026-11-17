@@ -1,5 +1,5 @@
 {
   "game_name": "Faster Clanker",
-  "description": "1v1 Vibecoding frenético: arregla errores de sintaxis, alucinaciones y vulnerabilidades antes de que arruinen tu demo frente a los jueces.",
+  "description": "Eres la IA: el código se escribe solo a velocidad LLM. Cuando aparece un error, mete el combo antes de que se acabe la barra. Falla una vulnerabilidad y tu rival te HACKEA. 1v1 o vs CPU.",
   "player_mode": "two_player"
 }
