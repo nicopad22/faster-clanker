@@ -333,16 +333,17 @@ function update(time, delta) {
     if ((any1 || any2) && st.phaseT > 0.4) tone(scene, 880, 0.06, 'square', 0.08);
     // The player who opened the menu can press again to skip waiting and face the CPU
     const again = st.joinBy === 1 ? any1 : any2;
-    if ((st.humans[0] && st.humans[1] && st.phaseT > 0.6) || (again && st.phaseT > 0.35) || st.phaseT > 6) {
+    if ((st.humans[0] && st.humans[1] && st.phaseT > 0.6) || again || st.phaseT > 3) {
       startTut(scene);
     }
   } else if (st.phase === 'tut') {
     updateTut(scene, dt);
   } else if (st.phase === 'count') {
-    const before = Math.ceil(3 - st.phaseT + dt);
-    const now = Math.ceil(3 - st.phaseT);
+    const before = Math.ceil(2 - st.phaseT + dt);
+    const now = Math.ceil(2 - st.phaseT);
     if (now !== before && now > 0) tone(scene, 440, 0.12, 'square', 0.12);
-    if (st.phaseT >= 3) {
+    // START skips the countdown (handy for quick demos)
+    if (st.phaseT >= 2 || consumePressed(scene, 'START1') || consumePressed(scene, 'START2')) {
       st.phase = 'play';
       st.phaseT = 0;
       tone(scene, 880, 0.25, 'square', 0.14);
@@ -420,19 +421,20 @@ function updateTut(scene, dt) {
       p.tut = 5;
       p.tutW = 0;
       tutStep(scene, p);
+      st.tutEnd = 9; // skipping goes straight to the match once everyone is ready
       tone(scene, 880, 0.08, 'square', 0.08);
     }
     for (const tok of readTokens(scene, p.id)) handleToken(scene, p, st.p[1 - i], tok);
   }
   st.tutEnd = st.p.every((p) => p.tut >= 5) ? st.tutEnd + dt : 0;
-  if (st.tutEnd > 1.2 || st.phaseT > 150) startMatch(scene);
+  if (st.tutEnd > 0.6 || st.phaseT > 150) startMatch(scene);
 }
 
 function tutClear(scene, p) {
   const pr = p.prompt;
   fixLine(pr.line);
   p.prompt = null;
-  p.tutW = 1.5;
+  p.tutW = 1;
   p.flash = 0.18;
   p.flashCol = C.ok;
   addFloat(p, pr.type === 'hack' ? 'ROOT ACCESS' : '¡BIEN!', C.ok, TUT_OK[p.tut]);
@@ -1544,13 +1546,13 @@ function renderJoin(ctx, st) {
     txt(ctx, ready ? '¡LISTO!' : 'PRESIONA START', x, 300, ready ? C.white : Math.floor(st.t * 3) % 2 ? C.white : C.muted, 15, true, 1);
     txt(ctx, ready ? 'humano' : 'o juega la CPU', x, 330, C.muted, 13, false, 1);
   }
-  const left = Math.max(0, Math.ceil(5 - st.phaseT));
+  const left = Math.max(0, Math.ceil(3 - st.phaseT));
   txt(ctx, `La partida empieza en ${left}s`, W / 2, 410, C.muted, 15, false, 1);
   txt(ctx, 'Antes: una práctica corta. START la salta.', W / 2, 436, C.muted, 13, false, 1);
 }
 
 function renderCount(ctx, st) {
-  const n = Math.ceil(3 - st.phaseT);
+  const n = Math.ceil(2 - st.phaseT);
   ctx.fillStyle = 'rgba(5,7,12,0.5)';
   ctx.fillRect(0, 230, W, 140);
   const s = n > 0 ? String(n) : '¡DEPLOY!';
