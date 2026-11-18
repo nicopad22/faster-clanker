@@ -38,6 +38,7 @@ const C = {
   hal: '#ffae00',
   vul: '#3d9bff',
   ok: '#2ee88a',
+  tut: '#3ce8e0', // practice mode: everything practice-only wears this color
   kw: '#8fb4ff',
   str: '#9be38f',
   com: '#5f8f6a',
@@ -46,9 +47,9 @@ const C = {
 
 // Error types: each one plays differently and has its own color/sound/visual
 const TYPES = {
-  syn: { name: 'SINTAXIS', how: 'REPITE LAS FLECHAS', col: C.syn, bg: '#2a0b12', pts: 100 },
-  hal: { name: 'ALUCINACION', how: '¡HAZLAS AL REVÉS!', col: C.hal, bg: '#2a1a03', pts: 150 },
-  vul: { name: 'VULNERABLE', how: 'COMBO LARGO · NO FALLES', col: C.vul, bg: '#081a33', pts: 200 },
+  syn: { name: 'BUG', tag: 'BUG', how: 'COPIA LAS FLECHAS', col: C.syn, bg: '#2a0b12', pts: 100 },
+  hal: { name: 'ALUCINACION', tag: 'ALUCINACIÓN', how: '¡AL REVÉS! ↑=↓ ←=→', col: C.hal, bg: '#2a1a03', pts: 150 },
+  vul: { name: 'VULNERABLE', tag: 'VULN ⚠', how: 'COPIA · NO DEJES PASAR', col: C.vul, bg: '#081a33', pts: 200 },
   hack: { name: 'HACKEA!', how: 'ENTRA ANTES QUE PARCHEE', col: C.vul, bg: '#06204a', pts: 0 },
   patch: { name: 'PARCHEA!', how: '¡TE ESTÁN HACKEANDO!', col: C.syn, bg: '#2a0716', pts: 0 },
 };
@@ -190,6 +191,11 @@ const QUIPS = {
 
 const DIRS = ['U', 'D', 'L', 'R'];
 const OPP = { U: 'D', D: 'U', L: 'R', R: 'L' };
+const AR = { U: '↑', D: '↓', L: '←', R: '→', 1: '(1)' };
+
+// Practice mode: one scripted error per step, no timer and no penalties
+const TUT_T = ['syn', 'hal', 'hal', 'vul'];
+const TUT_OK = ['bug arreglado', 'alucinación borrada', '¡ya la cachaste!', 'agujero cerrado', 'así le robas puntos'];
 const PX = [10, 406];
 const PW = 384;
 // Panel vertical layout
@@ -245,16 +251,16 @@ function create() {
     humans: [true, false],
     p: [makePlayer(1, false), makePlayer(2, true)],
     highScores: [],
-    tag: [65, 65, 65],
-    tagIdx: 0,
-    saved: false,
+    tags: [],
+    mine: [],
+    idle: 0,
+    tutEnd: 0,
     winner: 0,
     reason: '',
     beat: 0,
     beatStep: 0,
-    titleCode: makePlayer(1, true),
   };
-  loadHighScores().then((s) => (scene.st.highScores = s));
+  refreshScores(scene);
 }
 
 // Shared refs for draw helpers
@@ -288,6 +294,9 @@ function makePlayer(id, cpu) {
     quip: QUIPS.idle[id % QUIPS.idle.length],
     log: 'clanker v4.2 listo --turbo',
     cpuT: 0.5,
+    tut: 5,
+    tutW: 0,
+    hint: null,
     stats: { fix: 0, perf: 0, miss: 0, hacks: 0 },
     typed: 0,
   };
@@ -314,12 +323,11 @@ function update(time, delta) {
   }
 
   // Only menus treat "any button" as a press; during play buttons go to the combos
-  const menu = st.phase === 'title' || st.phase === 'join' || st.phase === 'over';
+  const menu = st.phase === 'title' || st.phase === 'join';
   const any1 = menu && anyPressed(scene, 1);
   const any2 = menu && anyPressed(scene, 2);
 
   if (st.phase === 'title') {
-    streamCode(st.titleCode, dt, 70);
     if (any1 || any2) {
       st.phase = 'join';
       st.phaseT = 0;
@@ -335,8 +343,10 @@ function update(time, delta) {
     // The player who opened the menu can press again to skip waiting and face the CPU
     const again = st.joinBy === 1 ? any1 : any2;
     if ((st.humans[0] && st.humans[1] && st.phaseT > 0.6) || (again && st.phaseT > 0.35) || st.phaseT > 6) {
-      startMatch(scene);
+      startTut(scene);
     }
+  } else if (st.phase === 'tut') {
+    updateTut(scene, dt);
   } else if (st.phase === 'count') {
     const before = Math.ceil(3 - st.phaseT + dt);
     const now = Math.ceil(3 - st.phaseT);
@@ -355,7 +365,7 @@ function update(time, delta) {
     updateMatch(scene, dt);
   } else if (st.phase === 'over') {
     for (const p of st.p) tickFx(p, dt);
-    updateGameOver(scene, any1, any2);
+    updateGameOver(scene, dt);
   }
 
   if (st.phase === 'play' || st.phase === 'count') music(scene, dt);
@@ -374,6 +384,77 @@ function startMatch(scene) {
   st.banner = null;
   st.winner = 0;
   st.beat = 0;
+  clearInput(scene);
+}
+
+// --- practice ----------------------------------------------------------------
+
+function startTut(scene) {
+  const st = scene.st;
+  startMatch(scene);
+  st.phase = 'tut';
+  st.tutEnd = 0;
+  for (const p of st.p) {
+    p.tut = p.cpu ? 5 : 0;
+    p.log = 'modo práctica · sin apuro';
+    tutStep(scene, p);
+  }
+}
+
+function tutStep(scene, p) {
+  if (p.prompt && p.prompt.line) p.prompt.line.st = '';
+  p.prompt = null;
+  if (p.tut < 4) spawnError(scene, p, TUT_T[p.tut]);
+  else if (p.tut === 4) {
+    p.zd = 6;
+    p.log = '0-DAY LISTO >> APRIETA 2';
+  } else {
+    p.zd = 0;
+    p.log = p.cpu ? 'cpu: ya me sé las reglas' : '¡listo! esperando al rival';
+  }
+}
+
+function updateTut(scene, dt) {
+  const st = scene.st;
+  for (let i = 0; i < 2; i++) {
+    const p = st.p[i];
+    const pr = p.prompt;
+    tickFx(p, dt);
+    // The editor waits on the broken line so it never scrolls away
+    if (!pr || !pr.line || pr.line.n < pr.line.s.length) streamCode(p, dt, 30);
+    if (pr && pr.wait > 0) pr.wait -= dt;
+    if (p.tutW > 0 && (p.tutW -= dt) <= 0) {
+      p.tut++;
+      tutStep(scene, p);
+    }
+    if (p.cpu) continue;
+    if (p.tut < 5 && consumePressed(scene, `START${p.id}`)) {
+      p.tut = 5;
+      p.tutW = 0;
+      tutStep(scene, p);
+      tone(scene, 880, 0.08, 'square', 0.08);
+    }
+    for (const tok of readTokens(scene, p.id)) handleToken(scene, p, st.p[1 - i], tok);
+  }
+  st.tutEnd = st.p.every((p) => p.tut >= 5) ? st.tutEnd + dt : 0;
+  if (st.tutEnd > 1.2 || st.phaseT > 150) startMatch(scene);
+}
+
+function tutClear(scene, p) {
+  const pr = p.prompt;
+  fixLine(pr.line);
+  p.prompt = null;
+  p.tutW = 1.5;
+  p.flash = 0.18;
+  p.flashCol = C.ok;
+  addFloat(p, pr.type === 'hack' ? 'ROOT ACCESS' : '¡BIEN!', C.ok, TUT_OK[p.tut]);
+  tone(scene, 660, 0.06, 'square', 0.1);
+  tone(scene, 880, 0.06, 'square', 0.1, 0, 0.05);
+  tone(scene, 1320, 0.12, 'square', 0.1, 0, 0.1);
+}
+
+function setHint(p, s, c) {
+  p.hint = { s, c, t: 2.2 };
 }
 
 function updateMatch(scene, dt) {
@@ -437,6 +518,7 @@ function updatePlayer(scene, p, rival, dt) {
 function tickFx(p, dt) {
   if (p.shake > 0) p.shake = Math.max(0, p.shake - dt);
   if (p.flash > 0) p.flash = Math.max(0, p.flash - dt);
+  if (p.hint && (p.hint.t -= dt) <= 0) p.hint = null;
   if (p.moodT > 0) {
     p.moodT -= dt;
     if (p.moodT <= 0) p.mood = 0;
@@ -480,10 +562,10 @@ function garble(s) {
 
 // --- errors & prompts --------------------------------------------------------
 
-function spawnError(scene, p) {
+function spawnError(scene, p, force) {
   const lv = scene.st.lv;
   const roll = Math.random();
-  const type = roll < 0.5 ? 'syn' : roll < 0.78 ? 'hal' : 'vul';
+  const type = force || (roll < 0.5 ? 'syn' : roll < 0.78 ? 'hal' : 'vul');
   let bad;
   let fix;
   if (type === 'syn') {
@@ -512,7 +594,8 @@ function spawnError(scene, p) {
 
   const len = type === 'syn' ? 3 + (lv > 0.5) : type === 'hal' ? 3 + (lv > 0.65) : 5 + (lv > 0.55);
   const base = type === 'syn' ? 2.4 - 0.9 * lv : type === 'hal' ? 3.1 - 1.0 * lv : 4.2 - 1.2 * lv;
-  setPrompt(p, type, makeSeq(len, type === 'hal' ? 0 : 0.25), base + (len > 3 && type !== 'vul' ? 0.3 : 0), ln);
+  // The first practice bug always ends on button 1 so it gets taught
+  setPrompt(p, type, makeSeq(len, type === 'hal' ? 0 : force === 'syn' ? 1 : 0.25), base + (len > 3 && type !== 'vul' ? 0.3 : 0), ln);
   p.log = type === 'syn' ? 'tsc: error TS1005' : type === 'hal' ? 'warn: API no existe' : 'audit: CVE CRÍTICO';
   if (type === 'syn') {
     tone(scene, 300, 0.07, 'square', 0.1);
@@ -554,7 +637,8 @@ function setPrompt(p, type, seq, dur, line, wait) {
 
 function handleToken(scene, p, rival, tok) {
   const st = scene.st;
-  if (st.phase !== 'play') return;
+  const tut = st.phase === 'tut';
+  if (st.phase !== 'play' && !tut) return;
 
   if (p.lock > 0) {
     if (tok === '1' || tok === '2') {
@@ -567,35 +651,54 @@ function handleToken(scene, p, rival, tok) {
     return;
   }
 
+  const pr = p.prompt;
   if (tok === '2') {
-    if (p.zd >= 6 && !st.race && rival.lock <= 0) {
+    if (tut) {
+      // Practice hack: a solo exploit combo, the rival isn't touched
+      if (p.tut === 4 && !pr && p.tutW <= 0) {
+        p.zd = 0;
+        setPrompt(p, 'hack', makeSeq(5, 0.5), 9, null, 0.6);
+        p.log = 'ssh root@rival · ¡HACKEA!';
+        for (let i = 0; i < 2; i++) tone(scene, 500, 0.18, 'sawtooth', 0.08, 1100, i * 0.2);
+      }
+    } else if (p.zd >= 6 && !st.race && rival.lock <= 0) {
       p.zd = 0;
       startRace(scene, p, rival, `P${p.id} LANZÓ UN 0-DAY`);
     }
     return;
   }
 
-  const pr = p.prompt;
-  if (!pr || pr.wait > 0) return;
+  if (!pr) {
+    if (tut && p.tut === 4 && p.tutW <= 0) setHint(p, 'Aprieta el BOTÓN 2 para atacar', C.vul);
+    return;
+  }
+  if (pr.wait > 0) return;
   if (tok === pr.exp[pr.i]) {
     pr.i++;
     pr.pop = 0.12;
     tone(scene, 700 + pr.i * 90, 0.04, 'square', 0.07);
     if (pr.i >= pr.exp.length) completePrompt(scene, p, rival);
   } else {
+    // Explain the mistake when it's the classic mix-up: hallucinations are the only reversed combo
+    const want = pr.exp[pr.i];
+    if (pr.type === 'hal' && tok === pr.seq[pr.i]) setHint(p, `¡AL REVÉS! Viste ${AR[tok]}: aprieta ${AR[want]}`, C.hal);
+    else if (pr.type !== 'hal' && tok === OPP[want]) setHint(p, 'Esta va IGUAL: solo la alucinación se invierte', C.white);
+    else if (tut) setHint(p, `Ahora toca ${AR[want]}`, C.white);
+    pr.err = 0.3;
+    p.shake = 0.2;
+    tone(scene, 140, 0.12, 'sawtooth', 0.12, 90);
+    if (tut) return;
     // Wrong input: progress resets and you lose time — mashing doesn't pay
     pr.i = 0;
     pr.t = Math.min(pr.dur - 0.05, pr.t + 0.3);
-    pr.err = 0.3;
-    p.shake = 0.2;
     p.stab = Math.max(0, p.stab - 2);
-    tone(scene, 140, 0.12, 'sawtooth', 0.12, 90);
   }
 }
 
 function completePrompt(scene, p, rival) {
   const st = scene.st;
   const pr = p.prompt;
+  if (st.phase === 'tut') return tutClear(scene, p);
   if (pr.type === 'hack') return hackSuccess(scene, p, rival);
   if (pr.type === 'patch') return patchSuccess(scene, p, rival);
 
@@ -616,12 +719,7 @@ function completePrompt(scene, p, rival) {
       }
     }
   }
-  if (pr.line) {
-    pr.line.s = pr.line.fix;
-    pr.line.n = pr.line.s.length;
-    pr.line.st = 'ok';
-    pr.line.fixT = 0.5;
-  }
+  fixLine(pr.line);
   addFloat(p, perfect ? '¡PERFECTO!' : 'BIEN', perfect ? C.ok : C.white, `+${pts}`);
   p.flash = 0.18;
   p.flashCol = C.ok;
@@ -663,6 +761,14 @@ function failPrompt(scene, p, rival) {
   if (pr.type === 'vul' && !st.race && rival.lock <= 0 && p.lock <= 0) {
     startRace(scene, rival, p, `BRECHA EN P${p.id}`);
   }
+}
+
+function fixLine(ln) {
+  if (!ln) return;
+  ln.s = ln.fix;
+  ln.n = ln.s.length;
+  ln.st = 'ok';
+  ln.fixT = 0.5;
 }
 
 function nextGap(st) {
@@ -808,46 +914,63 @@ function finishMatch(scene, winner, reason) {
   st.phaseT = 0;
   st.winner = winner;
   st.reason = reason;
-  st.tag = [65, 65, 65];
-  st.tagIdx = 0;
-  st.saved = !st.humans[winner - 1];
+  // Every human with points gets a tag, winner or not (a CPU win used to skip the ranking)
+  st.tags = st.p.map((p) => ({ c: [65, 65, 65], i: 0, done: p.cpu || p.score <= 0, rank: 0 }));
+  st.mine = [];
+  st.idle = 0;
+  clearInput(scene);
   tone(scene, 523, 0.15, 'square', 0.12);
   tone(scene, 659, 0.15, 'square', 0.12, 0, 0.15);
   tone(scene, 784, 0.15, 'square', 0.12, 0, 0.3);
   tone(scene, 1046, 0.4, 'square', 0.12, 0, 0.45);
 }
 
-function updateGameOver(scene, any1, any2) {
+function updateGameOver(scene, dt) {
   const st = scene.st;
-  if (st.phaseT < 1.2) {
-    readTokens(scene, 1);
-    readTokens(scene, 2);
-    return;
-  }
-  if (st.saved) {
-    readTokens(scene, 1);
-    readTokens(scene, 2);
-    if (any1 || any2) {
-      st.phase = 'title';
-      st.phaseT = 0;
+  st.idle += dt;
+  const all = st.tags.every((t) => t.done);
+  let back = st.idle > 40;
+  for (let i = 0; i < 2; i++) {
+    const tg = st.tags[i];
+    const toks = readTokens(scene, i + 1);
+    const ok = consumePressed(scene, `START${i + 1}`) || toks.includes('1');
+    if (st.phaseT < 1.2) continue;
+    if (ok || toks.length) st.idle = 0;
+    if (all) {
+      if (ok) back = true;
+      continue;
     }
-    return;
+    if (tg.done) continue;
+    for (const t of toks) {
+      if (t === 'L') tg.i = (tg.i + 2) % 3;
+      else if (t === 'R') tg.i = (tg.i + 1) % 3;
+      else if (t === 'U') tg.c[tg.i] = tg.c[tg.i] >= 90 ? 65 : tg.c[tg.i] + 1;
+      else if (t === 'D') tg.c[tg.i] = tg.c[tg.i] <= 65 ? 90 : tg.c[tg.i] - 1;
+      else continue;
+      tone(scene, 800, 0.03, 'square', 0.06);
+    }
+    if (ok) {
+      saveTag(scene, i);
+      tone(scene, 1046, 0.2, 'square', 0.1);
+    }
   }
-  const toks = readTokens(scene, st.winner);
-  readTokens(scene, 3 - st.winner);
-  const confirm = st.winner === 1 ? any1 : any2;
-  for (const t of toks) {
-    if (t === 'L') st.tagIdx = (st.tagIdx + 2) % 3;
-    else if (t === 'R') st.tagIdx = (st.tagIdx + 1) % 3;
-    else if (t === 'U') st.tag[st.tagIdx] = st.tag[st.tagIdx] >= 90 ? 65 : st.tag[st.tagIdx] + 1;
-    else if (t === 'D') st.tag[st.tagIdx] = st.tag[st.tagIdx] <= 65 ? 90 : st.tag[st.tagIdx] - 1;
-    tone(scene, 800, 0.03, 'square', 0.06);
+  if (back) {
+    // Walked away mid-entry: keep the score anyway
+    st.tags.forEach((t, i) => t.done || saveTag(scene, i));
+    st.phase = 'title';
+    st.phaseT = 0;
+    clearInput(scene);
+    refreshScores(scene);
   }
-  if (confirm || toks.includes('1')) {
-    st.saved = true;
-    saveHighScore(scene, { tag: String.fromCharCode(...st.tag), score: st.p[st.winner - 1].score });
-    tone(scene, 1046, 0.2, 'square', 0.1);
-  }
+}
+
+function saveTag(scene, i) {
+  const st = scene.st;
+  const tg = st.tags[i];
+  tg.done = true;
+  const e = { tag: String.fromCharCode(...tg.c), score: st.p[i].score, id: Date.now() * 2 + i };
+  st.mine.push(e.id);
+  saveHighScore(scene, e).then((r) => (tg.rank = r || 99));
 }
 
 // --- small helpers -----------------------------------------------------------
@@ -903,22 +1026,41 @@ function render(scene) {
 }
 
 function renderTopBar(ctx, st) {
-  ctx.fillStyle = '#0b0f18';
+  const tut = st.phase === 'tut';
+  ctx.fillStyle = tut ? '#062624' : '#0b0f18';
   ctx.fillRect(0, 0, W, 44);
   ctx.fillStyle = C.line;
   ctx.fillRect(0, 44, W, 2);
+  // Practice: scrolling hazard stripes under the bar
+  if (tut) for (let i = -1; i < 42; i++) {
+    ctx.fillStyle = C.tut;
+    ctx.beginPath();
+    const sx = i * 20 + ((st.t * 30) % 20);
+    ctx.moveTo(sx, 46);
+    ctx.lineTo(sx + 10, 46);
+    ctx.lineTo(sx + 6, 50);
+    ctx.lineTo(sx - 4, 50);
+    ctx.fill();
+  }
+  for (let i = 0; i < 2; i++) {
+    const p = st.p[i];
+    const x = i === 0 ? 14 : W - 14;
+    px(ctx, `P${p.id}`, x, 10, 3, p.col, i * 2);
+    const lb = !tut || p.cpu ? (p.cpu ? 'CPU' : 'HUMANO') : p.tut < 5 ? 'START = saltar' : '¡LISTO!';
+    txt(ctx, lb, i === 0 ? x + 38 : x - 38, 16, tut && !p.cpu ? C.tut : C.muted, 12, tut, i * 2);
+  }
+  if (tut) {
+    box(ctx, W / 2 - 100, 2, 200, 40, '#031614', C.tut);
+    px(ctx, 'MODO PRACTICA', W / 2, 8, 2, Math.floor(st.t * 2) % 2 ? C.tut : C.white, 1);
+    txt(ctx, 'no cuenta · sin castigo', W / 2, 26, '#8fd8d2', 10, false, 1);
+    return;
+  }
   const secs = Math.ceil(st.timeLeft);
   const hot = secs <= 15;
   const blink = hot && Math.floor(st.t * 4) % 2 === 0;
   box(ctx, W / 2 - 60, 2, 120, 40, hot ? '#2a0b12' : '#05070b', hot ? C.syn : C.dim);
   px(ctx, String(secs).padStart(2, '0'), W / 2, 8, 5, blink ? C.white : hot ? C.syn : C.white, 1);
   txt(ctx, 'SEG', W / 2 + 32, 26, C.muted, 10);
-  for (let i = 0; i < 2; i++) {
-    const p = st.p[i];
-    const x = i === 0 ? 14 : W - 14;
-    px(ctx, `P${p.id}`, x, 10, 3, p.col, i * 2);
-    txt(ctx, p.cpu ? 'CPU' : 'HUMANO', i === 0 ? x + 38 : x - 38, 16, C.muted, 12, false, i * 2);
-  }
   const stage = st.lv < 0.33 ? 'SPRINT 1 · CHILL' : st.lv < 0.66 ? 'SPRINT 2 · CAFEÍNA' : 'SPRINT 3 · PROD EN LLAMAS';
   txt(ctx, stage, W / 2 - 74, 16, st.lv < 0.66 ? C.muted : C.hal, 11, true, 2);
   txt(ctx, `${Math.round(50 + 100 * st.lv)} tok/s`, W / 2 + 74, 16, C.muted, 11, false, 0);
@@ -928,7 +1070,7 @@ function renderPanel(ctx, st, p, rival, x) {
   const race = st.race;
   const attacking = race && race.a === p;
   const defending = race && race.v === p;
-  const zdReady = p.zd >= 6 && st.phase === 'play';
+  const zdReady = p.zd >= 6 && (st.phase === 'play' || st.phase === 'tut');
   const blue = attacking || zdReady;
   const pulse = 0.5 + 0.5 * Math.sin(st.t * 10);
 
@@ -947,12 +1089,16 @@ function renderPanel(ctx, st, p, rival, x) {
   } else if (p.stab < 25 && st.phase === 'play') {
     ctx.fillStyle = `rgba(255,40,60,${0.05 + 0.08 * pulse})`;
     ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
+  } else if (st.phase === 'tut') {
+    ctx.fillStyle = 'rgba(60,232,224,0.07)';
+    ctx.fillRect(x, HDR_Y, PW, H - HDR_Y - 6);
   }
 
   renderHeader(ctx, st, p, x);
   renderEditor(ctx, st, p, x);
   renderAction(ctx, st, p, rival, x);
-  renderFooter(ctx, st, p, x);
+  if (st.phase === 'tut') renderCoach(ctx, st, p, x);
+  else renderFooter(ctx, st, p, x);
 
   // Flash on fix / fail
   if (p.flash > 0) {
@@ -974,6 +1120,9 @@ function renderPanel(ctx, st, p, rival, x) {
   } else if (p.stab < 25 && st.phase === 'play') {
     bc = pulse > 0.5 ? C.syn : C.dim;
     bw = 3;
+  } else if (st.phase === 'tut') {
+    bc = C.tut;
+    bw = 4;
   } else if (p.mult >= 4) {
     bc = Math.floor(st.t * 12) % 2 ? C.hal : p.col;
     bw = 4;
@@ -994,10 +1143,17 @@ function renderFire(ctx, st, x) {
 
 function renderHeader(ctx, st, p, x) {
   const y = HDR_Y;
-  ctx.fillStyle = '#0a0e16';
+  const tut = st.phase === 'tut';
+  ctx.fillStyle = tut ? '#062624' : '#0a0e16';
   ctx.fillRect(x + 2, y + 2, PW - 4, 54);
-  px(ctx, String(p.score).padStart(6, '0'), x + 12, y + 8, 4, C.white, 0);
-  txt(ctx, 'PUNTOS', x + 12, y + 36, C.muted, 10);
+  if (tut) {
+    // No score in practice: the header says so instead
+    px(ctx, 'PRACTICA', x + 12, y + 8, 4, C.tut, 0);
+    txt(ctx, 'no suma puntos', x + PW - 12, y + 12, '#8fd8d2', 11, true, 2);
+  } else {
+    px(ctx, String(p.score).padStart(6, '0'), x + 12, y + 8, 4, C.white, 0);
+    txt(ctx, 'PUNTOS', x + 12, y + 36, C.muted, 10);
+  }
 
   // 0-DAY meter (fills with PERFECTs; when full, press 2 to hack)
   const zx = x + 70;
@@ -1012,6 +1168,7 @@ function renderHeader(ctx, st, p, x) {
     txt(ctx, '→ HACKEAR', x + 214, y + 22, Math.floor(st.t * 6) % 2 ? C.white : C.vul, 13, true, 1);
   }
 
+  if (tut) return;
   // Multiplier (Guitar Hero style): streak pips fill to the next level
   const mx = x + PW - 70;
   const mcol = [C.muted, C.ok, C.hal, p.col][p.mult - 1];
@@ -1036,7 +1193,8 @@ function renderEditor(ctx, st, p, x) {
     ctx.fillStyle = [C.syn, C.hal, C.ok][i];
     ctx.fillRect(x + 10 + i * 10, y0 + 5, 6, 6);
   }
-  txt(ctx, `p${p.id}/demo.ts — clanker escribiendo…`, x + 46, y0 + 2, C.muted, 11);
+  if (st.phase === 'tut') txt(ctx, `p${p.id}/practica.ts — de mentira, no pasa nada`, x + 46, y0 + 2, C.tut, 11);
+  else txt(ctx, `p${p.id}/demo.ts — clanker escribiendo…`, x + 46, y0 + 2, C.muted, 11);
   ctx.fillStyle = C.gutter;
   ctx.fillRect(x + 2, y0 + 16, 30, ED_H - 16);
 
@@ -1074,7 +1232,6 @@ function renderEditor(ctx, st, p, x) {
       txt(ctx, shown, x + 38 - j * 0.5, ly, C.hal, 12, true);
     } else if (active && ln.e === 'vul') {
       txt(ctx, shown, x + 38, ly, '#9fcbff', 12, true);
-      txt(ctx, '⚠', x + PW - 20, ly, C.vul, 12, true);
     } else if (active) {
       txt(ctx, shown, x + 38, ly, '#ffb3bb', 12, true);
       // red squiggle
@@ -1089,6 +1246,14 @@ function renderEditor(ctx, st, p, x) {
       txt(ctx, shown, x + 38, ly, C.ok, 12);
     } else drawCode(ctx, shown, x + 38, ly);
     ctx.globalAlpha = 1;
+    if (active) {
+      // Name tag on the broken line: tells a plain bug apart from a hallucination
+      const T = TYPES[ln.e];
+      const w = T.tag.length * 6.2 + 8;
+      ctx.fillStyle = T.col;
+      ctx.fillRect(x + PW - 8 - w, ly - 1, w, 13);
+      txt(ctx, T.tag, x + PW - 12, ly, '#05070b', 10, true, 2);
+    }
     if (i === n - 1 && Math.floor(st.t * 3) % 2 === 0) {
       ctx.fillStyle = p.col;
       ctx.fillRect(x + 38 + shown.length * cw + 1, ly, 7, 13);
@@ -1154,6 +1319,8 @@ function renderAction(ctx, st, p, rival, x) {
   } else if (pr) {
     const T = TYPES[pr.type];
     const waiting = pr.wait > 0;
+    const tut = st.phase === 'tut';
+    const help = tut && p.tut === 1;
     ctx.fillStyle = T.bg;
     ctx.fillRect(x + 2, y, PW - 4, ACT_H);
     ctx.fillStyle = T.col;
@@ -1184,26 +1351,43 @@ function renderAction(ctx, st, p, rival, x) {
       if (next) frame(ctx, cx - 3, ky + lift + wob - 3, size + 6, size + 6, Math.floor(st.t * 10) % 2 ? T.col : C.white, 2);
       const tok = done ? pr.exp[i] : pr.seq[i];
       drawKey(ctx, tok, cx + size / 2, ky + lift + wob + size / 2, done ? '#062012' : waiting ? C.dim : next ? C.white : T.col, size > 46 ? 5 : 4);
+      // First practice hallucination shows which arrow to really press
+      if (help && !done) txt(ctx, AR[pr.exp[i]], cx + size / 2, ky + size + 1, C.white, 17, true, 1);
     }
+    if (help) txt(ctx, 'aprieta', kx - 8, ky + size + 3, C.hal, 10, true, 2);
 
     // Timer bar with the PERFECT zone marked
     const by = y + 112;
     const bw = PW - 40;
     const left = 1 - pr.t / pr.dur;
-    ctx.fillStyle = '#000';
-    ctx.fillRect(x + 20, by, bw, 12);
-    ctx.fillStyle = left > 0.55 ? C.ok : left > 0.25 ? C.hal : C.syn;
-    ctx.fillRect(x + 20, by, bw * left, 12);
-    ctx.fillStyle = C.white;
-    ctx.fillRect(x + 20 + bw * 0.55, by - 2, 2, 16);
-    txt(ctx, '◀ PERFECTO', x + 20 + bw * 0.55 + 4, by - 11, C.muted, 9);
-    if (pr.type === 'hal' && !waiting) txt(ctx, 'si ves ↑ aprieta ↓ · si ves ← aprieta →', x + PW / 2, by + 16, C.hal, 11, true, 1);
+    if (tut) help || txt(ctx, 'práctica · tómate tu tiempo', x + PW / 2, by + 1, C.muted, 11, false, 1);
+    else {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(x + 20, by, bw, 12);
+      ctx.fillStyle = left > 0.55 ? C.ok : left > 0.25 ? C.hal : C.syn;
+      ctx.fillRect(x + 20, by, bw * left, 12);
+      ctx.fillStyle = C.white;
+      ctx.fillRect(x + 20 + bw * 0.55, by - 2, 2, 16);
+      txt(ctx, '◀ PERFECTO', x + 20 + bw * 0.55 + 4, by - 11, C.muted, 9);
+    }
+    if (p.hint) txt(ctx, p.hint.s, x + PW / 2, by + 16, p.hint.c, 11, true, 1);
+    else if (pr.type === 'hal' && !waiting) txt(ctx, 'si ves ↑ aprieta ↓ · si ves ← aprieta →', x + PW / 2, by + 16, C.hal, 11, true, 1);
     if (waiting) {
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = '#000';
       ctx.fillRect(x + 2, y + 40, PW - 4, 60);
       ctx.globalAlpha = 1;
       px(ctx, pr.type === 'hack' ? 'PREPARA EL EXPLOIT' : 'ALERTA DE INTRUSO', x + PW / 2, y + 62, 3, T.col, 1);
+    }
+  } else if (st.phase === 'tut' && !p.floats.length) {
+    if (p.tut === 4) {
+      px(ctx, '0-DAY LISTO', x + PW / 2, y + 18, 4, C.vul, 1);
+      drawKey(ctx, '2', x + PW / 2, y + 78, Math.floor(st.t * 4) % 2 ? C.white : C.vul, 6);
+      txt(ctx, 'APRIETA EL BOTÓN 2', x + PW / 2, y + 108, C.white, 13, true, 1);
+      if (p.hint) txt(ctx, p.hint.s, x + PW / 2, y + 128, p.hint.c, 11, true, 1);
+    } else if (p.tut >= 5) {
+      px(ctx, 'LISTO', x + PW / 2, y + 40, 6, C.ok, 1);
+      txt(ctx, p.cpu ? 'la CPU ya conoce las reglas' : 'esperando al rival...', x + PW / 2, y + 100, C.muted, 12, false, 1);
     }
   } else if (st.phase === 'play' && !p.floats.length) {
     px(ctx, 'BUILD OK', x + PW / 2, y + 50, 4, '#18402c', 1);
@@ -1261,6 +1445,67 @@ function renderFooter(ctx, st, p, x) {
   txt(ctx, `$ ${p.log}`, x + 14, y + 115, p.flash > 0 ? p.flashCol : '#8a96b4', 12);
 }
 
+function coach(st, p) {
+  const n = p.tut;
+  if (n === 0)
+    return ['PASO 1/4 · BUG', C.syn, [
+      ['La IA escribió un typo: no compila.'],
+      ['Es un BUG normal: COPIA las flechas'],
+      ['tal cual, con el joystick.'],
+      ['El círculo (1) es el BOTÓN 1.', C.muted],
+    ]];
+  if (n === 1)
+    return ['PASO 2/4 · ALUCINACION', C.hal, [
+      ['La IA inventó código que NO EXISTE.'],
+      ['¡Es la EXCEPCIÓN! Va AL REVÉS:', C.hal],
+      ['↑ es ↓     ← es →'],
+      ['Abajo de cada flecha ves cuál apretar.', C.muted],
+    ]];
+  if (n === 2)
+    return ['PASO 2/4 · OTRA MAS', C.hal, [
+      ['Ahora sin pista. Fíjate en el COLOR:'],
+      ['ROJO     = bug         → IGUAL', C.syn],
+      ['AMARILLO = alucinación → AL REVÉS', C.hal],
+      ['AZUL     = vulnerable  → IGUAL', C.vul],
+    ]];
+  if (n === 3)
+    return ['PASO 3/4 · VULNERABILIDAD', C.vul, [
+      ['Un agujero de seguridad. Flechas IGUAL,'],
+      ['pero el combo es más largo.'],
+      ['Si se te pasa el tiempo, el rival'],
+      ['puede HACKEARTE y robarte puntos.', C.vul],
+    ]];
+  if (n === 4)
+    return ['PASO 4/4 · HACKEO', C.vul, p.prompt ? [
+      ['Carrera: tú metes el exploit y'],
+      ['el rival mete el parche.'],
+      ['El más rápido gana y roba puntos.'],
+      ['(En la práctica nadie se defiende.)', C.muted],
+    ] : [
+      ['Arreglar RÁPIDO (PERFECTO) carga el 0-DAY.'],
+      ['Con el 0-DAY lleno, el BOTÓN 2 ataca.'],
+      ['Te lo llenamos: ¡aprieta 2!', C.vul],
+    ]];
+  return ['¡A LA HACKATON!', C.ok, [
+    ['90 segundos. Más arreglos = más puntos.'],
+    ['Si tu demo llega a 0%, pierdes.'],
+    ['Si te hackean: machaca 1 y 2.'],
+    [st.p.every((q) => q.tut >= 5) ? 'Arrancando...' : 'Esperando al rival...', C.muted],
+  ]];
+}
+
+function renderCoach(ctx, st, p, x) {
+  const y = FT_Y;
+  const [title, col, lines] = coach(st, p);
+  ctx.fillStyle = '#0a0e16';
+  ctx.fillRect(x + 2, y, PW - 4, H - y - 8);
+  ctx.fillStyle = col;
+  ctx.fillRect(x + 2, y, PW - 4, 3);
+  px(ctx, title, x + 12, y + 10, 2, col, 0);
+  lines.forEach((l, i) => txt(ctx, l[0], x + 12, y + 32 + i * 18, l[1] || C.white, 12, true));
+  if (p.tut < 5) txt(ctx, 'START = saltar práctica', x + PW - 12, y + 116, C.muted, 11, false, 2);
+}
+
 function renderJoin(ctx, st) {
   ctx.fillStyle = 'rgba(5,7,12,0.86)';
   ctx.fillRect(0, 0, W, H);
@@ -1276,6 +1521,7 @@ function renderJoin(ctx, st) {
   }
   const left = Math.max(0, Math.ceil(5 - st.phaseT));
   txt(ctx, `La partida empieza en ${left}s`, W / 2, 410, C.muted, 15, false, 1);
+  txt(ctx, 'Antes: una práctica corta. START la salta.', W / 2, 436, C.muted, 13, false, 1);
 }
 
 function renderCount(ctx, st) {
@@ -1284,6 +1530,11 @@ function renderCount(ctx, st) {
   ctx.fillRect(0, 230, W, 140);
   const s = n > 0 ? String(n) : '¡DEPLOY!';
   const k = 10 + (1 - (st.phaseT % 1)) * 4;
+  // The countdown always follows practice: make the switch to the real match obvious
+  ctx.fillStyle = C.syn;
+  ctx.fillRect(0, 186, W, 40);
+  px(ctx, 'FIN DE LA PRACTICA', W / 2, 192, 3, C.white, 1);
+  txt(ctx, '¡AHORA VA EN SERIO!', W / 2, 212, '#ffe0e4', 11, true, 1);
   px(ctx, s, W / 2, 300 - k * 3, Math.round(k), C.white, 1);
   txt(ctx, 'Arregla cada error antes de que se acabe la barra', W / 2, 352, C.muted, 14, true, 1);
 }
@@ -1310,12 +1561,12 @@ function renderBanner(ctx, st) {
 }
 
 function renderOver(ctx, st) {
-  ctx.fillStyle = 'rgba(5,7,12,0.9)';
+  ctx.fillStyle = 'rgba(5,7,12,0.93)';
   ctx.fillRect(0, 0, W, H);
   const wp = st.p[st.winner - 1];
-  px(ctx, `GANA P${st.winner}`, W / 2, 60, 9, wp.col, 1);
-  txt(ctx, st.reason, W / 2, 128, C.white, 16, true, 1);
-  // stats table
+  const blink = Math.floor(st.t * 3) % 2;
+  px(ctx, `GANA P${st.winner}`, W / 2, 22, 8, wp.col, 1);
+  txt(ctx, st.reason, W / 2, 80, C.white, 16, true, 1);
   const rows = [
     ['PUNTOS', (p) => p.score],
     ['ARREGLOS', (p) => p.stats.fix],
@@ -1323,91 +1574,243 @@ function renderOver(ctx, st) {
     ['FALLOS', (p) => p.stats.miss],
     ['HACKEOS', (p) => p.stats.hacks],
   ];
+  rows.forEach((r, j) => txt(ctx, r[0], W / 2, 136 + j * 20, C.muted, 12, false, 1));
   for (let i = 0; i < 2; i++) {
     const p = st.p[i];
-    const cx = i === 0 ? 250 : 550;
-    px(ctx, `P${p.id}`, cx, 168, 3, p.col, 1);
-    txt(ctx, p.cpu ? 'CPU' : 'HUMANO', cx, 190, C.muted, 11, false, 1);
-    rows.forEach((r, j) => txt(ctx, String(r[1](p)), cx, 210 + j * 22, j === 0 ? C.white : '#aab4cc', 15, j === 0, 1));
+    const tg = st.tags[i];
+    const cx = i === 0 ? 200 : 600;
+    px(ctx, `P${p.id}`, cx, 104, 3, p.col, 1);
+    rows.forEach((r, j) => txt(ctx, String(r[1](p)), cx, 134 + j * 20, j === 0 ? C.white : '#aab4cc', 15, j === 0, 1));
+    // Tag entry: each human fills their own, side by side
+    if (p.cpu) txt(ctx, 'CPU · fuera del ranking', cx, 290, C.muted, 12, false, 1);
+    else if (!tg.done && st.phaseT >= 1.2) {
+      txt(ctx, 'ESCRIBE TU TAG', cx, 248, C.hal, 13, true, 1);
+      for (let k = 0; k < 3; k++) {
+        const bx = cx - 73 + k * 50;
+        const act = tg.i === k;
+        box(ctx, bx, 270, 46, 52, '#05070b', act ? p.col : C.dim);
+        px(ctx, String.fromCharCode(tg.c[k]), bx + 23, 281, 5, act ? p.col : C.white, 1);
+        if (act) {
+          txt(ctx, '▲', bx + 23, 256, p.col, 12, true, 1);
+          txt(ctx, '▼', bx + 23, 324, p.col, 12, true, 1);
+        }
+      }
+      txt(ctx, '↑↓ letra · ←→ mover · 1 = OK', cx, 342, C.muted, 11, false, 1);
+    } else if (tg.done && p.score > 0) {
+      px(ctx, String.fromCharCode(...tg.c), cx, 262, 6, p.col, 1);
+      const r = tg.rank;
+      txt(ctx, !r ? 'guardando...' : r <= 5 ? `¡ENTRASTE AL TOP ${r}!` : 'puntaje guardado', cx, 310, r && r <= 5 ? C.ok : C.muted, 14, true, 1);
+    } else if (tg.done) txt(ctx, 'sin puntos para el ranking', cx, 290, C.muted, 12, false, 1);
   }
-  rows.forEach((r, j) => txt(ctx, r[0], W / 2, 212 + j * 22, C.muted, 12, false, 1));
+
+  box(ctx, 210, 362, 380, 146, '#0b0f18', C.dim);
+  px(ctx, 'MEJORES CLANKERS', W / 2, 374, 2, C.hal, 1);
+  if (!st.highScores.length) txt(ctx, 'Todavía no hay puntajes', W / 2, 430, C.muted, 13, false, 1);
+  st.highScores.slice(0, 5).forEach((e, i) => {
+    const me = st.mine.includes(e.id);
+    const col = me ? (blink ? C.white : C.ok) : i ? '#c6cee0' : C.hal;
+    txt(ctx, `${i + 1}.  ${e.tag}`, 250, 400 + i * 20, col, 14, true);
+    txt(ctx, String(e.score).padStart(6, '0'), 550, 400 + i * 20, col, 14, true, 2);
+    if (me) txt(ctx, '◀ TÚ', 556, 400 + i * 20, col, 12, true);
+  });
 
   if (st.phaseT < 1.2) return;
-  if (!st.saved) {
-    txt(ctx, `P${st.winner}: ESCRIBE TU TAG (joystick · botón 1 guarda)`, W / 2, 340, C.hal, 14, true, 1);
-    for (let i = 0; i < 3; i++) {
-      const cx = W / 2 - 75 + i * 52;
-      const act = st.tagIdx === i;
-      box(ctx, cx, 366, 46, 56, '#05070b', act ? wp.col : C.dim);
-      px(ctx, String.fromCharCode(st.tag[i]), cx + 23, 380, 5, act ? wp.col : C.white, 1);
-    }
-  } else {
-    txt(ctx, 'MEJORES CLANKERS', W / 2, 340, C.hal, 14, true, 1);
-    st.highScores.slice(0, 5).forEach((e, i) => {
-      txt(ctx, `${i + 1}. ${e.tag}   ${String(e.score).padStart(6, '0')}`, W / 2, 364 + i * 20, i ? C.white : C.ok, 14, false, 1);
-    });
-    if (Math.floor(st.t * 2) % 2) txt(ctx, 'PRESIONA START PARA LA REVANCHA', W / 2, 480, C.white, 16, true, 1);
-  }
+  if (st.tags.every((t) => t.done)) {
+    if (blink) txt(ctx, 'PRESIONA START PARA VOLVER', W / 2, 536, C.white, 16, true, 1);
+  } else txt(ctx, 'Ingresen su tag para entrar al ranking', W / 2, 536, C.muted, 14, false, 1);
+}
+
+// --- title: a team vibecoding at the hackathon while the deadline closes in ----
+
+const SKIN = ['#ffdbac', '#e0ac69', '#c68642', '#8d5524'];
+const HAIR = ['#2d1b0e', '#111', '#6b3e1f', '#c9a227', '#a33'];
+const SHIRT = ['#e74c3c', '#3498db', '#9b59b6', '#1abc9c', '#f39c12', '#e84393', '#00b894', '#636e72'];
+const TEAMS = ['TEAM 404', 'ESTRES.AI', 'NULL.JS'];
+const PANIC = ['¿QUIÉN HIZO PUSH A MAIN?', 'FUNCIONA EN MI MÁQUINA', '¡QUEDAN 5 MINUTOS!', '¿Y EL PITCH?', 'NO HAY TIEMPO PARA TESTS', 'SE CAYÓ EL WIFI', '¡DEPLOY O MUERTE!', 'NADIE DUERME HOY'];
+const OURS = ['¡CLANKER, MÁS RÁPIDO!', '¿POR QUÉ ESTÁ EN ROJO?', 'ESA API NO EXISTE...', 'ARREGLA ESO YA'];
+
+function hs(n) {
+  const v = Math.sin(n * 127.1) * 43758.5453;
+  return v - Math.floor(v);
 }
 
 function renderTitle(ctx, st) {
-  // streaming code backdrop
-  const tc = st.titleCode;
-  ctx.globalAlpha = 0.14;
-  tc.lines.forEach((ln, i) => drawCode(ctx, ln.s.slice(0, ln.n), 30, 20 + i * 36));
-  ctx.globalAlpha = 1;
+  const t = st.t;
+  // wall + string lights
+  ctx.fillStyle = '#10152a';
+  ctx.fillRect(0, 80, W, 212);
+  for (let i = 0; i < 40; i++) {
+    ctx.fillStyle = [C.p1, C.p2, C.hal, C.vul][(i + Math.floor(t * 3)) % 4];
+    ctx.fillRect(10 + i * 20, 86 + (i % 2) * 3, 5, 5);
+  }
+  // posters
+  box(ctx, 36, 104, 160, 66, '#efe8d4', '#c9bfa3');
+  txt(ctx, 'WIFI: hack-26', 46, 112, '#222', 12, true);
+  txt(ctx, 'clave: platano', 46, 130, '#222', 12);
+  txt(ctx, 'NO DORMIR AQUÍ', 46, 150, '#c0392b', 11, true);
+  box(ctx, 604, 104, 160, 66, '#efe8d4', '#c9bfa3');
+  txt(ctx, 'AGENDA', 614, 112, '#222', 12, true);
+  txt(ctx, 'Pizza ...... ✓', 614, 130, '#222', 12);
+  txt(ctx, 'DEMOS ...... YA', 614, 150, '#c0392b', 12, true);
 
-  const g = Math.floor(st.t * 2) % 7 === 0 ? 3 : 0;
-  px(ctx, 'FASTER', W / 2 - g, 22, 9, C.p2, 1);
-  px(ctx, 'FASTER', W / 2 + g, 20, 9, C.white, 1);
-  px(ctx, 'CLANKER', W / 2 + g, 84, 9, C.p1, 1);
-  txt(ctx, 'Eres la IA. El código se escribe solo. Arregla los errores antes de la demo.', W / 2, 150, C.white, 14, true, 1);
+  // deadline clock, ticking 3x faster than real time
+  const rem = 299 - (Math.floor(t * 3) % 300);
+  const hot = rem < 60;
+  box(ctx, 280, 96, 240, 68, '#1a0508', hot && Math.floor(t * 6) % 2 ? C.white : C.syn);
+  txt(ctx, 'DEADLINE DE LA HACKATÓN', W / 2, 101, C.syn, 11, true, 1);
+  const clock = `${String(Math.floor(rem / 60)).padStart(2, '0')}${Math.floor(t * 2) % 2 ? ':' : ' '}${String(rem % 60).padStart(2, '0')}`;
+  px(ctx, clock, W / 2, 120, 6, hot ? C.white : C.syn, 1);
 
-  // How to play: the three error types
-  const cards = [
-    ['syn', 'Repite las flechas.', 'Rápido y frecuente.', ['U', 'R', '1']],
-    ['hal', 'Haz las flechas AL REVÉS.', '↑ significa ↓', ['U', 'L', 'D']],
-    ['vul', 'Combo largo. Si fallas,', 'el rival te HACKEA.', ['L', 'U', 'R', 'D', '1']],
-  ];
-  cards.forEach((c, i) => {
-    const T = TYPES[c[0]];
-    const x = 28 + i * 252;
-    box(ctx, x, 180, 240, 150, T.bg, T.col);
-    drawIcon(ctx, c[0], x + 12, 192, T.col);
-    px(ctx, T.name, x + 44, 192, 3, T.col, 0);
-    txt(ctx, c[1], x + 14, 226, C.white, 13, true);
-    txt(ctx, c[2], x + 14, 244, '#c6cee0', 13);
-    c[3].forEach((d, j) => {
-      const kx = x + 14 + j * 40;
-      box(ctx, kx, 274, 34, 34, '#0b0f18', T.col);
-      drawKey(ctx, d, kx + 17, 291, C.white, 3);
-    });
+  // neighbouring teams, stressing out
+  TEAMS.forEach((name, ti) => {
+    const x0 = 30 + ti * 270;
+    for (let j = 0; j < 3; j++) {
+      const q = ti * 3 + j;
+      const dx = x0 + 30 + j * 55;
+      drawDev(ctx, dx, 218, 4, q, t);
+      ctx.fillStyle = '#b2bec3';
+      ctx.fillRect(dx - 2, 238, 28, 21);
+      ctx.fillStyle = '#ffd32a';
+      ctx.fillRect(dx + 10, 245, 5, 5);
+    }
+    ctx.fillStyle = '#4a3424';
+    ctx.fillRect(x0, 258, 200, 8);
+    ctx.fillStyle = '#2a1d14';
+    ctx.fillRect(x0, 266, 200, 20);
+    ctx.fillRect(x0 + 6, 266, 6, 26);
+    ctx.fillRect(x0 + 188, 266, 6, 26);
+    txt(ctx, name, x0 + 100, 270, '#8a7560', 10, true, 1);
+    const ph = t / 2.2 + ti * 0.37;
+    if (ph % 1 < 0.8) {
+      const s = PANIC[(Math.floor(ph) * 3 + ti) % PANIC.length];
+      bubble(ctx, s, x0 + 42 + (Math.floor(ph) % 3) * 55, 206, '#fff', '#111');
+    }
   });
 
-  // Hack explanation
-  box(ctx, 28, 344, 744, 58, '#081a33', C.vul);
-  px(ctx, 'HACKEO', 44, 358, 3, C.vul, 0);
-  txt(ctx, '6 PERFECTOS llenan tu 0-DAY → aprieta 2 para atacar.', 150, 354, C.white, 13, true);
-  txt(ctx, 'Carrera: tú HACKEAS y el rival PARCHEA. El más rápido gana y roba puntos.', 150, 374, '#c6cee0', 12);
+  // floor
+  ctx.fillStyle = '#0b0e18';
+  ctx.fillRect(0, 292, W, H - 292);
+  ctx.fillStyle = '#121828';
+  for (let y = 300; y < H; y += 24) ctx.fillRect(0, y, W, 2);
 
-  // Controls + scores
-  box(ctx, 28, 414, 360, 112, '#0d1119', C.dim);
-  px(ctx, 'CONTROLES', 44, 426, 2, C.white, 0);
-  txt(ctx, 'JOYSTICK  → flechas del combo', 44, 450, '#c6cee0', 13);
-  txt(ctx, 'BOTÓN 1   → cuando el combo pide (1)', 44, 470, '#c6cee0', 13);
-  txt(ctx, 'BOTÓN 2   → lanzar 0-DAY / matar virus', 44, 490, '#c6cee0', 13);
-  txt(ctx, 'Racha = multiplicador x4. Demo al 0% = pierdes.', 44, 508, C.muted, 11);
-  box(ctx, 412, 414, 360, 112, '#0d1119', C.dim);
-  px(ctx, 'MEJORES CLANKERS', 428, 426, 2, C.hal, 0);
-  if (!st.highScores.length) txt(ctx, 'Sin puntajes aún. ¡Sé el primero!', 428, 460, C.muted, 13);
-  st.highScores.slice(0, 4).forEach((e, i) => {
-    txt(ctx, `${i + 1}. ${e.tag}`, 428, 448 + i * 18, i ? C.white : C.ok, 13, true);
-    txt(ctx, String(e.score).padStart(6, '0'), 756, 448 + i * 18, i ? C.white : C.ok, 13, true, 2);
-  });
+  // our team: three laptops facing us, the middle one is you (the clanker)
+  for (let i = 0; i < 3; i++) drawScreen(ctx, 120 + i * 200, 300, 160, 90, t, i, i === 1);
+  ctx.fillStyle = '#4a3424';
+  ctx.fillRect(80, 396, 640, 12);
+  ctx.fillStyle = '#ecf0f1';
+  ctx.fillRect(292, 380, 12, 14);
+  ctx.fillStyle = '#00d26a';
+  ctx.fillRect(500, 380, 9, 15);
+  for (let i = 0; i < 3; i++) {
+    ctx.fillStyle = `rgba(255,255,255,${0.25 - i * 0.07})`;
+    ctx.fillRect(296 + Math.sin(t * 3 + i) * 2, 372 - i * 7 - ((t * 10) % 7), 2, 4);
+  }
+  box(ctx, 300, 283, 200, 15, '#05070b', C.p1);
+  txt(ctx, 'TÚ = LA IA DE ESTE EQUIPO', W / 2, 284, C.p1, 11, true, 1);
+  for (let i = 0; i < 3; i++) drawBack(ctx, 185 + i * 200, 406, 5, i, t);
+  const ph = t / 1.8;
+  if (ph % 1 < 0.75) bubble(ctx, OURS[Math.floor(ph) % OURS.length], 222, 432, C.p1, '#05070b', 1);
 
-  const on = Math.floor(st.t * 2.5) % 2;
-  box(ctx, 200, 540, 400, 44, on ? '#14230a' : '#0d1119', on ? C.p1 : C.dim);
-  px(ctx, 'PRESIONA START', W / 2, 552, 3, on ? C.p1 : C.white, 1);
+  // title over everything
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, 80);
+  const g = Math.floor(t * 2) % 7 === 0 ? 3 : 0;
+  px(ctx, 'FASTER CLANKER', W / 2 - g, 14, 6, C.p2, 1);
+  px(ctx, 'FASTER CLANKER', W / 2 + g, 12, 6, C.p1, 1);
+  txt(ctx, 'Eres la IA del equipo. El código se escribe solo... y se rompe solo.', W / 2, 56, C.white, 13, true, 1);
+
+  if (st.highScores.length) {
+    const top = st.highScores.slice(0, 3).map((e, i) => `${i + 1}. ${e.tag} ${e.score}`).join('   ');
+    txt(ctx, `MEJORES CLANKERS   ${top}`, W / 2, 500, C.hal, 12, true, 1);
+  } else txt(ctx, 'MEJORES CLANKERS: nadie todavía. ¡Sé el primero!', W / 2, 500, C.hal, 12, true, 1);
+  const on = Math.floor(t * 2.5) % 2;
+  box(ctx, 220, 522, 360, 44, on ? '#14230a' : '#0d1119', on ? C.p1 : C.dim);
+  px(ctx, 'PRESIONA START', W / 2, 534, 3, on ? C.p1 : C.white, 1);
+  txt(ctx, '1 o 2 jugadores · antes de jugar hay una práctica corta', W / 2, 576, C.muted, 11, false, 1);
+}
+
+function bubble(ctx, s, x, y, bg, fg, left) {
+  const w = s.length * 6.7 + 12;
+  const bx = left ? x - 8 : Math.max(4, Math.min(W - w - 4, x - w / 2));
+  ctx.fillStyle = bg;
+  ctx.fillRect(bx, y - 22, w, 18);
+  ctx.fillRect(x - 3, y - 4, 6, 4);
+  txt(ctx, s, bx + w / 2, y - 19, fg, 11, true, 1);
+}
+
+// Front-facing dev seated at a table; some type, some panic with hands on head
+function drawDev(ctx, x, y, k, q, t) {
+  const panic = Math.floor(t * 1.5 + q * 2.3) % 5 === 0;
+  const by = panic ? 0 : Math.floor(t * 8 + q) % 2;
+  const sk = SKIN[q % 4];
+  const sh = SHIRT[q % 8];
+  const r = (cx, cy, w, h, c) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(x + cx * k, y + by + cy * k, w * k, h * k);
+  };
+  r(-1, 6, 8, 6, sh);
+  r(0, 0, 6, 6, sk);
+  r(0, 0, 6, 2, HAIR[q % 5]);
+  r(0, 2, 1, 1, HAIR[q % 5]);
+  r(5, 2, 1, 1, HAIR[q % 5]);
+  r(1, 3, 1, 1, '#000');
+  r(4, 3, 1, 1, '#000');
+  if (panic) {
+    r(2, 4, 2, 2, '#400');
+    r(-2, 0, 1, 7, sh);
+    r(7, 0, 1, 7, sh);
+    r(-2, -1, 1, 1, sk);
+    r(7, -1, 1, 1, sk);
+  } else r(2, 5, 2, 0.5, '#400');
+  if (panic || q % 3 === 0) r(6.3, 1 + ((t * 3 + q) % 3), 0.7, 1, '#7fd4ff');
+}
+
+// Our team, seen from behind, typing at the screens
+function drawBack(ctx, x, y, k, q, t) {
+  const by = Math.floor(t * 6 + q) % 3 === 0 ? 1 : 0;
+  const sh = SHIRT[(q + 3) % 8];
+  const r = (cx, cy, w, h, c) => {
+    ctx.fillStyle = c;
+    ctx.fillRect(x + cx * k, y + by + cy * k, w * k, h * k);
+  };
+  r(-3, 7, 12, 9, sh);
+  r(-4, 8, 2, 7, sh);
+  r(8, 8, 2, 7, sh);
+  r(2, 6, 2, 1, SKIN[q % 4]);
+  r(-0.4, 2, 6.8, 2, SKIN[q % 4]);
+  r(0, 0, 6, 6, HAIR[(q + 1) % 5]);
+}
+
+function drawScreen(ctx, x, y, w, h, t, s, ours) {
+  box(ctx, x, y, w, h, '#05070c', ours ? (Math.floor(t * 4) % 2 ? C.p1 : '#6a8a00') : '#3a4258');
+  const base = Math.floor(t * (ours ? 3 : 1.6) + s * 10);
+  for (let r = 0; r < 7; r++) {
+    const li = base + r;
+    const ly = y + 8 + r * 11;
+    // Each screen shows one kind of error: bug, hallucination, vulnerability
+    const typ = hs(li * 3 + s) < 0.16 ? ['syn', 'hal', 'vul'][s] : 0;
+    if (typ) {
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = TYPES[typ].col;
+      ctx.fillRect(x + 3, ly - 2, w - 6, 10);
+      ctx.globalAlpha = 1;
+    }
+    let cx = x + 8 + Math.floor(hs(li + 9) * 3) * 8;
+    const segs = 1 + Math.floor(hs(li * 5) * 4);
+    for (let g = 0; g < segs; g++) {
+      const sw = 8 + Math.floor(hs(li * 11 + g) * 28);
+      if (cx + sw > x + w - 8) break;
+      ctx.fillStyle = typ ? TYPES[typ].col : [C.kw, C.str, '#d7def0', C.num][Math.floor(hs(li + g * 3) * 4)];
+      ctx.fillRect(cx, ly, sw, 5);
+      cx += sw + 5;
+    }
+    if (ours && r === 6 && Math.floor(t * 3) % 2) {
+      ctx.fillStyle = C.p1;
+      ctx.fillRect(cx, ly - 1, 6, 7);
+    }
+  }
+  ctx.fillStyle = '#8a94a8';
+  ctx.fillRect(x - 10, y + h, w + 20, 6);
 }
 
 // --- drawing primitives -------------------------------------------------------
@@ -1560,6 +1963,11 @@ function createControls(scene) {
   });
 }
 
+// Drop presses buffered during the previous phase (mashing at the end of a match, etc.)
+function clearInput(scene) {
+  scene.controls.pressed = Object.create(null);
+}
+
 function consumePressed(scene, code) {
   if (scene.controls.pressed[code]) {
     scene.controls.pressed[code] = false;
@@ -1645,20 +2053,51 @@ function getStorage() {
   };
 }
 
+function cleanScores(v) {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter((e) => e && typeof e.tag === 'string' && Number.isFinite(e.score))
+    .map((e) => ({ tag: e.tag.slice(0, 3).toUpperCase(), score: Math.max(0, Math.floor(e.score)), id: Number(e.id) || 0 }));
+}
+
+function mergeScores(...lists) {
+  const seen = new Set();
+  return []
+    .concat(...lists)
+    .filter((e) => {
+      const k = `${e.tag}|${e.score}|${e.id}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+}
+
 async function loadHighScores() {
   try {
     const res = await getStorage().get(STORAGE_KEY);
-    if (res && res.found && Array.isArray(res.value)) {
-      return res.value.filter((e) => e && typeof e.tag === 'string' && typeof e.score === 'number').slice(0, 5);
-    }
+    if (res && res.found) return cleanScores(res.value);
   } catch (_) {}
   return [];
 }
 
-async function saveHighScore(scene, entry) {
-  try {
-    const list = scene.st.highScores.concat(entry).sort((a, b) => b.score - a.score).slice(0, 5);
-    scene.st.highScores = list;
-    await getStorage().set(STORAGE_KEY, list);
-  } catch (_) {}
+function refreshScores(scene) {
+  loadHighScores().then((s) => (scene.st.highScores = mergeScores(s, scene.st.highScores)));
+}
+
+// Saves are queued and re-read storage first, so two players saving at once (or a
+// list that failed to load) never overwrite each other's scores. Resolves to the rank.
+function saveHighScore(scene, e) {
+  G.q = (G.q || Promise.resolve())
+    .then(async () => {
+      const list = mergeScores(await loadHighScores(), scene.st.highScores, [e]);
+      scene.st.highScores = list;
+      try {
+        await getStorage().set(STORAGE_KEY, list);
+      } catch (_) {}
+      return list.findIndex((x) => x.id === e.id) + 1;
+    })
+    .catch(() => 0);
+  return G.q;
 }

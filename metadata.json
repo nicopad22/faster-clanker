@@ -1,5 +1,5 @@
 {
   "game_name": "Faster Clanker",
-  "description": "Eres la IA: el código se escribe solo a velocidad LLM. Cuando aparece un error, mete el combo antes de que se acabe la barra. Falla una vulnerabilidad y tu rival te HACKEA. 1v1 o vs CPU.",
+  "description": "Eres la IA de un equipo en plena hackatón y el deadline se viene encima. Arregla bugs copiando el combo, pero ojo: las alucinaciones van AL REVÉS. Falla una vulnerabilidad y tu rival te HACKEA. Incluye práctica guiada. 1v1 o vs CPU.",
   "player_mode": "two_player"
 }
