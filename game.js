@@ -182,13 +182,6 @@ const POPUPS = [
   ['NPM AUDIT', '9.999 vulnerabilidades'],
 ];
 
-const QUIPS = {
-  ok: ['¡SHIP IT!', '¡10X DEV!', '¡LGTM!', 'Me encanta', '¡Eso es!', 'Invertimos'],
-  bad: ['¿Qué es eso?', 'No compila...', 'Uff.', 'Next.', '¿Es IA slop?'],
-  hacked: ['¡¿PWNED?!', 'Llamen a seguridad', 'Esto es un desastre'],
-  idle: ['Mmm...', 'A ver la demo', '¿Escala?', '¿Y el modelo de negocio?'],
-};
-
 const DIRS = ['U', 'D', 'L', 'R'];
 const OPP = { U: 'D', D: 'U', L: 'R', R: 'L' };
 const AR = { U: '↑', D: '↓', L: '←', R: '→', 1: '(1)' };
@@ -289,10 +282,8 @@ function makePlayer(id, cpu) {
     flash: 0,
     flashCol: C.white,
     floats: [],
-    mood: 0,
-    moodT: 0,
-    quip: QUIPS.idle[id % QUIPS.idle.length],
-    log: 'clanker v4.2 listo --turbo',
+    term: [['$ npx clanker --turbo', C.muted], ['clanker v4.2 listo · escribiendo demo.ts', C.ok]],
+    prod: [0, 0, 0],
     cpuT: 0.5,
     tut: 5,
     tutW: 0,
@@ -396,7 +387,6 @@ function startTut(scene) {
   st.tutEnd = 0;
   for (const p of st.p) {
     p.tut = p.cpu ? 5 : 0;
-    p.log = 'modo práctica · sin apuro';
     tutStep(scene, p);
   }
 }
@@ -407,10 +397,8 @@ function tutStep(scene, p) {
   if (p.tut < 4) spawnError(scene, p, TUT_T[p.tut]);
   else if (p.tut === 4) {
     p.zd = 6;
-    p.log = '0-DAY LISTO >> APRIETA 2';
   } else {
     p.zd = 0;
-    p.log = p.cpu ? 'cpu: ya me sé las reglas' : '¡listo! esperando al rival';
   }
 }
 
@@ -485,7 +473,7 @@ function updateMatch(scene, dt) {
   if (st.timeLeft <= 0) {
     const [a, b] = st.p;
     const w = a.score !== b.score ? (a.score > b.score ? 1 : 2) : a.stab >= b.stab ? 1 : 2;
-    finishMatch(scene, w, '¡TIEMPO! LOS JUECES DECIDEN');
+    finishMatch(scene, w, '¡TIEMPO! GANA EL MEJOR PUNTAJE');
   }
 }
 
@@ -519,10 +507,6 @@ function tickFx(p, dt) {
   if (p.shake > 0) p.shake = Math.max(0, p.shake - dt);
   if (p.flash > 0) p.flash = Math.max(0, p.flash - dt);
   if (p.hint && (p.hint.t -= dt) <= 0) p.hint = null;
-  if (p.moodT > 0) {
-    p.moodT -= dt;
-    if (p.moodT <= 0) p.mood = 0;
-  }
   for (let i = p.floats.length - 1; i >= 0; i--) {
     const f = p.floats[i];
     f.t -= dt;
@@ -565,7 +549,8 @@ function garble(s) {
 function spawnError(scene, p, force) {
   const lv = scene.st.lv;
   const roll = Math.random();
-  const type = force || (roll < 0.5 ? 'syn' : roll < 0.78 ? 'hal' : 'vul');
+  // Early on it's mostly plain bugs; hallucinations and vulns ramp up with the match
+  const type = force || (roll < 0.62 - 0.17 * lv ? 'syn' : roll < 0.86 - 0.1 * lv ? 'hal' : 'vul');
   let bad;
   let fix;
   if (type === 'syn') {
@@ -592,11 +577,15 @@ function spawnError(scene, p, force) {
   const ln = newLine(p, bad, type);
   ln.fix = fix;
 
-  const len = type === 'syn' ? 3 + (lv > 0.5) : type === 'hal' ? 3 + (lv > 0.65) : 5 + (lv > 0.55);
-  const base = type === 'syn' ? 2.4 - 0.9 * lv : type === 'hal' ? 3.1 - 1.0 * lv : 4.2 - 1.2 * lv;
+  // Easy curve: long timers and short combos for the first half, then it squeezes
+  const e = lv * lv;
+  const len = force ? 3 + (type === 'vul') : type === 'syn' ? 2 + (lv > 0.2) + (lv > 0.6) : type === 'hal' ? 2 + (lv > 0.35) + (lv > 0.75) : 4 + (lv > 0.5);
+  const base = type === 'syn' ? 3.6 - 1.7 * e : type === 'hal' ? 4.6 - 2.1 * e : 5.8 - 2.4 * e;
   // The first practice bug always ends on button 1 so it gets taught
   setPrompt(p, type, makeSeq(len, type === 'hal' ? 0 : force === 'syn' ? 1 : 0.25), base + (len > 3 && type !== 'vul' ? 0.3 : 0), ln);
-  p.log = type === 'syn' ? 'tsc: error TS1005' : type === 'hal' ? 'warn: API no existe' : 'audit: CVE CRÍTICO';
+  if (type === 'syn') log(p, `tsc: error TS1005 en demo.ts:${ln.no}`, C.syn);
+  else if (type === 'hal') log(p, `warn: '${(bad.match(/(\w+)\(/) || [0, 'winHack'])[1]}' no existe · L${ln.no}`, C.hal);
+  else log(p, `npm audit: 1 critical · demo.ts:${ln.no}`, C.vul);
   if (type === 'syn') {
     tone(scene, 300, 0.07, 'square', 0.1);
     tone(scene, 300, 0.07, 'square', 0.1, 0, 0.1);
@@ -631,8 +620,11 @@ function setPrompt(p, type, seq, dur, line, wait) {
     wait: wait || 0,
     err: 0,
     pop: 0.25,
+    a: 0,
   };
-  p.cpuT = 0.3 + Math.random() * 0.35 + (wait || 0);
+  // CPU paces itself to finish at 38–93% of the timer: PERFECT ~40% of the time
+  p.cpuS = (dur * (0.38 + Math.random() * 0.55)) / seq.length;
+  p.cpuT = p.cpuS + (wait || 0);
 }
 
 function handleToken(scene, p, rival, tok) {
@@ -658,12 +650,12 @@ function handleToken(scene, p, rival, tok) {
       if (p.tut === 4 && !pr && p.tutW <= 0) {
         p.zd = 0;
         setPrompt(p, 'hack', makeSeq(5, 0.5), 9, null, 0.6);
-        p.log = 'ssh root@rival · ¡HACKEA!';
         for (let i = 0; i < 2; i++) tone(scene, 500, 0.18, 'sawtooth', 0.08, 1100, i * 0.2);
       }
     } else if (p.zd >= 6 && !st.race && rival.lock <= 0) {
       p.zd = 0;
       startRace(scene, p, rival, `P${p.id} LANZÓ UN 0-DAY`);
+      log(rival, `!! p${p.id} llenó su 0-DAY con 6 PERFECTOS`, C.syn);
     }
     return;
   }
@@ -681,7 +673,13 @@ function handleToken(scene, p, rival, tok) {
   } else {
     // Explain the mistake when it's the classic mix-up: hallucinations are the only reversed combo
     const want = pr.exp[pr.i];
-    if (pr.type === 'hal' && tok === pr.seq[pr.i]) setHint(p, `¡AL REVÉS! Viste ${AR[tok]}: aprieta ${AR[want]}`, C.hal);
+    if (pr.type === 'hal') {
+      // First slip on a hallucination: flash, blink AL REVES and show the real arrows
+      pr.h = 1;
+      p.flash = 0.25;
+      p.flashCol = C.hal;
+      setHint(p, `¡AL REVÉS! ${AR[pr.seq[pr.i]]} = ${AR[want]}`, C.hal);
+    }
     else if (pr.type !== 'hal' && tok === OPP[want]) setHint(p, 'Esta va IGUAL: solo la alucinación se invierte', C.white);
     else if (tut) setHint(p, `Ahora toca ${AR[want]}`, C.white);
     pr.err = 0.3;
@@ -702,7 +700,7 @@ function completePrompt(scene, p, rival) {
   if (pr.type === 'hack') return hackSuccess(scene, p, rival);
   if (pr.type === 'patch') return patchSuccess(scene, p, rival);
 
-  const perfect = pr.t <= pr.dur * 0.45;
+  const perfect = pr.t <= pr.dur * 0.6;
   p.streak++;
   p.mult = Math.min(4, 1 + Math.floor(p.streak / 4));
   const pts = Math.round(TYPES[pr.type].pts * (perfect ? 1.5 : 1) * p.mult * (st.timeLeft <= 15 ? 2 : 1));
@@ -714,17 +712,17 @@ function completePrompt(scene, p, rival) {
     if (p.zd < 6) {
       p.zd++;
       if (p.zd === 6) {
-        p.log = '0-DAY LISTO >> APRIETA 2';
+        log(p, '0-day listo >> BOTÓN 2 para hackear', C.vul);
         tone(scene, 1200, 0.3, 'triangle', 0.1, 1800, 0.12);
       }
     }
   }
   fixLine(pr.line);
-  addFloat(p, perfect ? '¡PERFECTO!' : 'BIEN', perfect ? C.ok : C.white, `+${pts}`);
+  const up = p.mult > 1 && p.streak % 4 === 0;
+  addFloat(p, perfect ? '¡PERFECTO!' : 'BIEN', perfect ? C.ok : C.white, `+${pts}${up ? `  ·  ¡MULTI x${p.mult}!` : ''}`);
   p.flash = 0.18;
   p.flashCol = C.ok;
-  setMood(p, 1, QUIPS.ok);
-  if (p.zd < 6) p.log = `fix ${pr.type} ok · +${pts}`;
+  log(p, `$ git commit -m "fix L${pr.line.no}" ${perfect ? '⚡' : ''}+${pts}`, C.ok);
   p.prompt = null;
   p.nextErr = nextGap(st);
   if (perfect) {
@@ -735,8 +733,8 @@ function completePrompt(scene, p, rival) {
     tone(scene, 520, 0.06, 'square', 0.1);
     tone(scene, 780, 0.1, 'square', 0.1, 0, 0.06);
   }
-  if (p.mult > 1 && p.streak % 4 === 0) {
-    addFloat(p, `MULTI x${p.mult}`, p.col, '');
+  if (up) {
+    log(p, `racha ${p.streak} · multiplicador x${p.mult}`, p.col);
     tone(scene, 400, 0.3, 'square', 0.08, 1600, 0.1);
   }
 }
@@ -755,11 +753,12 @@ function failPrompt(scene, p, rival) {
   p.nextErr = nextGap(st) + 0.4;
   if (pr.line) pr.line.st = 'bad';
   addFloat(p, 'FALLO', C.syn, pr.type === 'syn' ? 'NO COMPILA' : pr.type === 'hal' ? 'IA SLOP EN PROD' : 'CVE EXPUESTO');
-  setMood(p, -1, QUIPS.bad);
-  p.log = pr.type === 'vul' ? '!! vulnerabilidad en producción' : 'prod: 500 Internal Server Error';
+  p.prod[['syn', 'hal', 'vul'].indexOf(pr.type)]++;
+  log(p, `$ git push prod → ${pr.type === 'syn' ? '500 Internal Server Error' : pr.type === 'hal' ? 'IA slop en producción' : 'CVE expuesto en prod'}`, C.syn);
   tone(scene, 220, 0.35, 'sawtooth', 0.16, 60);
   if (pr.type === 'vul' && !st.race && rival.lock <= 0 && p.lock <= 0) {
     startRace(scene, rival, p, `BRECHA EN P${p.id}`);
+    log(p, '!! dejaste pasar una vulnerabilidad', C.syn);
   }
 }
 
@@ -772,7 +771,7 @@ function fixLine(ln) {
 }
 
 function nextGap(st) {
-  return 1.1 - 0.6 * st.lv + Math.random() * 0.6;
+  return 1.8 - 1.2 * st.lv + Math.random() * 0.6;
 }
 
 // --- hacking: a race between attacker and victim ------------------------------
@@ -787,8 +786,8 @@ function startRace(scene, a, v, title) {
   const seq = makeSeq(6, 0.5);
   setPrompt(a, 'hack', seq, 4.6, null, 0.9);
   setPrompt(v, 'patch', makeSeq(6, 0.5), 4.6, null, 0.9);
-  a.log = 'ssh root@rival · ¡HACKEA!';
-  v.log = '!! intrusión detectada · ¡PARCHEA!';
+  log(a, `$ nmap -sV p${v.id}.hack26 → 22/tcp open`, C.vul);
+  log(v, '!! intrusión detectada · ¡PARCHEA!', C.syn);
   showBanner(st, title, `P${a.id}: ¡HACKEA!   P${v.id}: ¡PARCHEA!`, C.vul, 1.2);
   st.flash = { col: C.vul, t: 0.3 };
   st.shake = 0.3;
@@ -821,11 +820,9 @@ function hackSuccess(scene, a, v) {
   v.mash = 0;
   v.shake = 1;
   v.popups = [0, 1, 2].map((i) => ({ k: (a.stats.hacks + i) % POPUPS.length, x: 16 + i * 46, y: ED_Y + 8 + i * 42 }));
-  setMood(v, -1, QUIPS.hacked);
-  v.log = 'root@rival: rm -rf tu_demo/';
-  a.log = `ROOT ACCESS · ${steal} pts robados`;
+  log(v, `root@p${a.id}:~# rm -rf demo/`, C.syn);
+  log(a, `root access · ${steal} pts robados`, C.vul);
   addFloat(a, 'ROOT ACCESS', C.vul, `+${steal} ROBADOS`);
-  setMood(a, 1, QUIPS.ok);
   showBanner(st, `P${a.id} HACKEÓ A P${v.id}`, `-${steal} PTS ROBADOS`, C.vul, 2);
   st.flash = { col: '#ffffff', t: 0.25 };
   st.shake = 0.7;
@@ -842,8 +839,8 @@ function patchSuccess(scene, v, a) {
   a.stab = Math.max(0, a.stab - 6);
   addFloat(v, '¡PARCHEADO!', C.ok, '+300');
   addFloat(a, 'BLOQUEADO', C.syn, 'EL RIVAL PARCHEÓ');
-  v.log = 'patch aplicado · intruso bloqueado';
-  a.log = 'connection refused (403)';
+  log(v, '$ iptables -A INPUT -j DROP · bloqueado', C.ok);
+  log(a, 'ssh: connection refused', C.syn);
   showBanner(st, `P${v.id} BLOQUEÓ EL HACK`, '¡FIREWALL ARRIBA!', C.ok, 1.3);
   tone(scene, 440, 0.1, 'square', 0.1);
   tone(scene, 660, 0.1, 'square', 0.1, 0, 0.1);
@@ -854,7 +851,7 @@ function unlock(scene, p) {
   p.lock = 0;
   p.popups = [];
   p.nextErr = 1;
-  p.log = 'kill -9 · sistema restaurado';
+  log(p, '$ kill -9 4242 · sistema restaurado', C.ok);
   addFloat(p, 'RESTAURADO', C.ok, '');
   tone(scene, 330, 0.1, 'square', 0.1, 660);
 }
@@ -869,9 +866,14 @@ function cpuThink(scene, p, rival, dt) {
     p.cpuT = 0.13 + Math.random() * 0.1;
     return handleToken(scene, p, rival, '1');
   }
+  // A full 0-DAY waits a moment so the human sees the CPU panel flashing first
   if (p.zd >= 6 && !st.race && rival.lock <= 0) {
-    p.cpuT = 0.5;
-    return handleToken(scene, p, rival, '2');
+    p.zw = p.zw || st.t + 2.5;
+    if (st.t > p.zw) {
+      p.zw = 0;
+      p.cpuT = 0.5;
+      return handleToken(scene, p, rival, '2');
+    }
   }
   const pr = p.prompt;
   if (!pr || pr.wait > 0) {
@@ -880,7 +882,7 @@ function cpuThink(scene, p, rival, dt) {
   }
   const want = pr.exp[pr.i];
   const miss = Math.random() < (pr.type === 'hal' ? 0.1 : 0.06);
-  p.cpuT = (0.2 + Math.random() * 0.22) * (1 - 0.2 * st.lv);
+  p.cpuT = p.cpuS * (0.7 + Math.random() * 0.6);
   handleToken(scene, p, rival, miss ? (want === 'U' ? 'D' : 'U') : want);
 }
 
@@ -976,14 +978,14 @@ function saveTag(scene, i) {
 // --- small helpers -----------------------------------------------------------
 
 function addFloat(p, s, col, sub) {
-  p.floats.push({ s, sub, col, t: 1.1, y: ACT_Y + 40 });
-  if (p.floats.length > 3) p.floats.shift();
+  // One judgement at a time: a new one replaces the old so they never stack
+  p.floats = [{ s, sub, col, t: 1.1, y: ACT_Y + 40 }];
 }
 
-function setMood(p, m, list) {
-  p.mood = m;
-  p.moodT = 1.6;
-  p.quip = Phaser.Utils.Array.GetRandom(list);
+// Terminal log under each editor: every action prints a (fake but plausible) command
+function log(p, s, c) {
+  p.term.push([s, c || '#8a96b4']);
+  if (p.term.length > 4) p.term.shift();
 }
 
 function showBanner(st, s, sub, col, dur) {
@@ -1051,8 +1053,7 @@ function renderTopBar(ctx, st) {
   }
   if (tut) {
     box(ctx, W / 2 - 100, 2, 200, 40, '#031614', C.tut);
-    px(ctx, 'MODO PRACTICA', W / 2, 8, 2, Math.floor(st.t * 2) % 2 ? C.tut : C.white, 1);
-    txt(ctx, 'no cuenta · sin castigo', W / 2, 26, '#8fd8d2', 10, false, 1);
+    px(ctx, 'MODO PRACTICA', W / 2, 16, 2, Math.floor(st.t * 2) % 2 ? C.tut : C.white, 1);
     return;
   }
   const secs = Math.ceil(st.timeLeft);
@@ -1097,6 +1098,18 @@ function renderPanel(ctx, st, p, rival, x) {
   renderHeader(ctx, st, p, x);
   renderEditor(ctx, st, p, x);
   renderAction(ctx, st, p, rival, x);
+  if (st.phase === 'tut' && p.tut < 5) {
+    // Spotlight: darken header + editor, cut a hole over the broken line
+    const ln = p.prompt && p.prompt.line;
+    const top = p.tut === 4 ? ED_Y : HDR_Y;
+    ctx.fillStyle = 'rgba(0,0,0,.75)';
+    ctx.beginPath();
+    ctx.rect(x, top, PW, ACT_Y - top);
+    if (ln) ctx.rect(x + 32, p.aly - 2, PW - 34, LINE_H);
+    ctx.fill('evenodd');
+    if (ln) frame(ctx, x + 30, p.aly - 4, PW - 30, LINE_H + 4, Math.floor(st.t * 4) % 2 ? TYPES[p.prompt.type].col : C.white, 2);
+    frame(ctx, x + 2, ACT_Y, PW - 4, ACT_H, Math.floor(st.t * 4) % 2 ? C.tut : C.white, 2);
+  }
   if (st.phase === 'tut') renderCoach(ctx, st, p, x);
   else renderFooter(ctx, st, p, x);
 
@@ -1211,6 +1224,7 @@ function renderEditor(ctx, st, p, x) {
     const ly = y0 + 20 + (i - first) * LINE_H;
     const age = n - 1 - i;
     const active = ln.e && ln.st === 'act';
+    if (active) p.aly = ly;
     if (active || ln.st === 'bad' || ln.fixT > 0 || ln.st === 'ok') {
       const tc = ln.st === 'ok' ? C.ok : TYPES[ln.e].col;
       ctx.globalAlpha = active ? 0.28 + 0.12 * Math.sin(st.t * 12) : ln.st === 'ok' ? (ln.fixT > 0 ? 0.35 : 0.08) : 0.18;
@@ -1223,7 +1237,8 @@ function renderEditor(ctx, st, p, x) {
     if (ln.fixT > 0) ln.fixT -= 1 / 60;
     txt(ctx, String(ln.no), x + 28, ly, active ? TYPES[ln.e].col : C.dim, 11, false, 2);
     const shown = ln.s.slice(0, ln.n);
-    const fade = age > 8 ? 0.55 : 1;
+    // While an error is live the rest of the code fades out so the broken line stands alone
+    const fade = active ? 1 : p.prompt && p.prompt.line ? 0.25 : age > 8 ? 0.55 : 1;
     ctx.globalAlpha = fade;
     if (active && ln.e === 'hal') {
       // hallucinations wobble and ghost
@@ -1320,14 +1335,15 @@ function renderAction(ctx, st, p, rival, x) {
     const T = TYPES[pr.type];
     const waiting = pr.wait > 0;
     const tut = st.phase === 'tut';
-    const help = tut && p.tut === 1;
+    // Real arrows appear under each key in the first practice hallucination, or after a slip
+    const help = (tut && p.tut === 1) || pr.h;
     ctx.fillStyle = T.bg;
     ctx.fillRect(x + 2, y, PW - 4, ACT_H);
     ctx.fillStyle = T.col;
     ctx.fillRect(x + 2, y, PW - 4, 4);
     // Type label + icon
     drawIcon(ctx, pr.type, x + 12, y + 12, T.col);
-    px(ctx, T.name, x + 44, y + 12, 3, T.col, 0);
+    px(ctx, pr.h && Math.floor(st.t * 6) % 2 ? 'AL REVES' : T.name, x + 44, y + 12, 3, T.col, 0);
     txt(ctx, T.how, x + PW - 12, y + 14, Math.floor(st.t * 4) % 2 && pr.type === 'hal' ? C.white : T.col, 12, true, 2);
 
     // Big keycaps — the combo you have to enter, one at a time
@@ -1339,6 +1355,7 @@ function renderAction(ctx, st, p, rival, x) {
     const ky = y + 42 + (pr.err > 0 ? rnd(4) : 0);
     if (pr.err > 0) pr.err -= 1 / 60;
     if (pr.pop > 0) pr.pop -= 1 / 60;
+    pr.a += 1 / 60;
     for (let i = 0; i < n; i++) {
       const cx = kx + i * (size + gap);
       const done = i < pr.i;
@@ -1348,9 +1365,21 @@ function renderAction(ctx, st, p, rival, x) {
       const bg = done ? C.ok : pr.err > 0 ? '#4a0d18' : next ? '#1d2434' : '#0e131d';
       const bd = done ? C.ok : next ? C.white : waiting ? C.dim : T.col;
       box(ctx, cx, ky + lift + wob, size, size, bg, bd);
+      if (pr.type === 'hal' && !done) {
+        // glitchy double outline: hallucination keys don't look like normal keys
+        frame(ctx, cx - 3, ky + lift + wob + 2, size, size, '#f0f', 1);
+        frame(ctx, cx + 3, ky + lift + wob - 2, size, size, '#0ff', 1);
+      }
       if (next) frame(ctx, cx - 3, ky + lift + wob - 3, size + 6, size + 6, Math.floor(st.t * 10) % 2 ? T.col : C.white, 2);
       const tok = done ? pr.exp[i] : pr.seq[i];
-      drawKey(ctx, tok, cx + size / 2, ky + lift + wob + size / 2, done ? '#062012' : waiting ? C.dim : next ? C.white : T.col, size > 46 ? 5 : 4);
+      // Hallucinations: pending arrows keep spinning to their opposite and back — "this one flips"
+      const ph = (pr.a + 2 - i * 0.1) % 2;
+      const f = pr.type === 'hal' && !done && !waiting && ph < 0.7 ? Math.sin(ph * 4.49) : 0;
+      ctx.save();
+      ctx.translate(cx + size / 2, ky + lift + wob + size / 2);
+      ctx.rotate(f * Math.PI);
+      drawKey(ctx, tok, 0, 0, done ? '#062012' : waiting ? C.dim : next || f > 0.6 ? C.white : T.col, size > 46 ? 5 : 4);
+      ctx.restore();
       // First practice hallucination shows which arrow to really press
       if (help && !done) txt(ctx, AR[pr.exp[i]], cx + size / 2, ky + size + 1, C.white, 17, true, 1);
     }
@@ -1364,14 +1393,13 @@ function renderAction(ctx, st, p, rival, x) {
     else {
       ctx.fillStyle = '#000';
       ctx.fillRect(x + 20, by, bw, 12);
-      ctx.fillStyle = left > 0.55 ? C.ok : left > 0.25 ? C.hal : C.syn;
+      ctx.fillStyle = left > 0.4 ? C.ok : left > 0.2 ? C.hal : C.syn;
       ctx.fillRect(x + 20, by, bw * left, 12);
       ctx.fillStyle = C.white;
-      ctx.fillRect(x + 20 + bw * 0.55, by - 2, 2, 16);
-      txt(ctx, '◀ PERFECTO', x + 20 + bw * 0.55 + 4, by - 11, C.muted, 9);
+      ctx.fillRect(x + 20 + bw * 0.4, by - 2, 2, 16);
+      help || txt(ctx, '◀ PERFECTO', x + 20 + bw * 0.4 + 4, by - 11, C.muted, 9);
     }
-    if (p.hint) txt(ctx, p.hint.s, x + PW / 2, by + 16, p.hint.c, 11, true, 1);
-    else if (pr.type === 'hal' && !waiting) txt(ctx, 'si ves ↑ aprieta ↓ · si ves ← aprieta →', x + PW / 2, by + 16, C.hal, 11, true, 1);
+    if (p.hint) txt(ctx, p.hint.s, x + PW / 2, by + 16, p.hint.c, 14, true, 1);
     if (waiting) {
       ctx.globalAlpha = 0.85;
       ctx.fillStyle = '#000';
@@ -1427,22 +1455,17 @@ function renderFooter(ctx, st, p, x) {
     ctx.fillRect(x + 12 + i * sw, y + 24, sw - 2, 14);
   }
 
-  // Judges react to your demo
-  const mood = p.mood || (s > 66 ? 1 : s < 33 ? -1 : 0);
-  for (let i = 0; i < 3; i++) {
-    const bounce = p.mood && Math.floor(st.t * 8 + i) % 2 ? -3 : 0;
-    drawJudge(ctx, x + 14 + i * 40, y + 50 + bounce, mood, i);
-  }
-  box(ctx, x + 134, y + 52, PW - 146, 34, '#05070b', mood > 0 ? C.ok : mood < 0 ? C.syn : C.dim);
-  ctx.fillStyle = mood > 0 ? C.ok : mood < 0 ? C.syn : C.dim;
-  ctx.fillRect(x + 128, y + 64, 6, 6);
-  txt(ctx, `"${p.quip}"`, x + 144, y + 61, C.white, 13, true);
-  txt(ctx, 'JUECES', x + 14, y + 96, C.muted, 10);
-
-  // CLI status line
-  ctx.fillStyle = '#05070b';
-  ctx.fillRect(x + 8, y + 112, PW - 16, 20);
-  txt(ctx, `$ ${p.log}`, x + 14, y + 115, p.flash > 0 ? p.flashCol : '#8a96b4', 12);
+  // Terminal: the match as a stream of commands, plus the audit of what reached prod
+  ctx.fillStyle = '#04060a';
+  ctx.fillRect(x + 8, y + 44, PW - 16, 92);
+  p.term.forEach((l, i) => txt(ctx, l[0].slice(0, 54), x + 14, y + 48 + i * 14, l[1], 11));
+  const pr = p.prompt;
+  const cmd = pr ? `$ ${{ syn: 'vim +' + (pr.line && pr.line.no) + ' demo.ts', hal: 'git revert --ia', vul: 'npm audit fix', hack: 'ssh root@p' + (3 - p.id), patch: 'iptables -A INPUT' }[pr.type]} ${'■'.repeat(pr.i)}${'□'.repeat(pr.exp.length - pr.i)}` : '$ ' + (Math.floor(st.t * 3) % 2 ? '_' : '');
+  txt(ctx, cmd, x + 14, y + 104, pr ? TYPES[pr.type].col : C.white, 11, true);
+  const [b, h, v] = p.prod;
+  ctx.fillStyle = b + h + v ? '#2a0b12' : '#0b2016';
+  ctx.fillRect(x + 8, y + 120, PW - 16, 16);
+  txt(ctx, b + h + v ? `audit: ${v} vulns · ${b} bugs · ${h} alucinaciones en prod` : 'audit: 0 vulnerabilidades · prod limpio ✓', x + 14, y + 122, b + h + v ? C.syn : C.ok, 11, true);
 }
 
 function coach(st, p) {
@@ -1456,10 +1479,9 @@ function coach(st, p) {
     ]];
   if (n === 1)
     return ['PASO 2/4 · ALUCINACION', C.hal, [
-      ['La IA inventó código que NO EXISTE.'],
-      ['¡Es la EXCEPCIÓN! Va AL REVÉS:', C.hal],
+      ['Código inventado: va ¡AL REVÉS!', C.hal],
       ['↑ es ↓     ← es →'],
-      ['Abajo de cada flecha ves cuál apretar.', C.muted],
+      ['Las flechas que GIRAN se invierten.', C.muted],
     ]];
   if (n === 2)
     return ['PASO 2/4 · OTRA MAS', C.hal, [
@@ -1503,7 +1525,10 @@ function renderCoach(ctx, st, p, x) {
   ctx.fillRect(x + 2, y, PW - 4, 3);
   px(ctx, title, x + 12, y + 10, 2, col, 0);
   lines.forEach((l, i) => txt(ctx, l[0], x + 12, y + 32 + i * 18, l[1] || C.white, 12, true));
-  if (p.tut < 5) txt(ctx, 'START = saltar práctica', x + PW - 12, y + 116, C.muted, 11, false, 2);
+  if (p.tut < 5) {
+    box(ctx, x + PW - 150, y + 110, 142, 22, '#031614', C.tut);
+    if (Math.floor(st.t * 2) % 2) px(ctx, 'START: SALTAR', x + PW - 79, y + 115, 2, C.tut, 1);
+  }
 }
 
 function renderJoin(ctx, st) {
@@ -1620,105 +1645,216 @@ function renderOver(ctx, st) {
   } else txt(ctx, 'Ingresen su tag para entrar al ranking', W / 2, 536, C.muted, 14, false, 1);
 }
 
-// --- title: a team vibecoding at the hackathon while the deadline closes in ----
+// --- title: isometric hackathon floor, your team's table in the spotlight -----
 
 const SKIN = ['#ffdbac', '#e0ac69', '#c68642', '#8d5524'];
 const HAIR = ['#2d1b0e', '#111', '#6b3e1f', '#c9a227', '#a33'];
 const SHIRT = ['#e74c3c', '#3498db', '#9b59b6', '#1abc9c', '#f39c12', '#e84393', '#00b894', '#636e72'];
-const TEAMS = ['TEAM 404', 'ESTRES.AI', 'NULL.JS'];
+const CANS = ['#00d26a', '#1e90ff', '#ff3b3b', '#f5f6fa', '#ffd32a'];
 const PANIC = ['¿QUIÉN HIZO PUSH A MAIN?', 'FUNCIONA EN MI MÁQUINA', '¡QUEDAN 5 MINUTOS!', '¿Y EL PITCH?', 'NO HAY TIEMPO PARA TESTS', 'SE CAYÓ EL WIFI', '¡DEPLOY O MUERTE!', 'NADIE DUERME HOY'];
 const OURS = ['¡CLANKER, MÁS RÁPIDO!', '¿POR QUÉ ESTÁ EN ROJO?', 'ESA API NO EXISTE...', 'ARREGLA ESO YA'];
+// Tables: [x, y, seed, name]; ours sits at the origin, neighbours are cut by the screen edge
+const TABLES = [[-10, -3, 3, 'NULL.JS'], [-3, -10, 4, 'TEAM 404'], [-7, 7, 1, 'ESTRES.AI'], [7, -7, 2, 'PROMPT_BROS'], [0, 0, 0]];
+const IK = 28;
+const ISO = { x: 400, y: 322 };
 
 function hs(n) {
   const v = Math.sin(n * 127.1) * 43758.5453;
   return v - Math.floor(v);
 }
 
+// Dimetric projection: x runs down-right, y runs down-left, z is up
+function iso(x, y, z) {
+  return [ISO.x + (x - y) * IK, ISO.y + ((x + y) * IK) / 2 - z * IK];
+}
+
+function poly(ctx, col, P, a) {
+  ctx.fillStyle = col;
+  ctx.beginPath();
+  for (const q of P) ctx.lineTo(...iso(...q));
+  ctx.fill();
+  if (a) {
+    ctx.globalAlpha = a;
+    poly(ctx, '#000', P);
+    ctx.globalAlpha = 1;
+  }
+}
+
+// Rectangle on the plane y (faces the viewer's lower-left)
+function quad(ctx, col, x0, x1, y, z0, z1) {
+  poly(ctx, col, [[x0, y, z0], [x1, y, z0], [x1, y, z1], [x0, y, z1]]);
+}
+
+function cube(ctx, x, y, z, w, d, h, col, top) {
+  const X = x + w;
+  const Y = y + d;
+  const Z = z + h;
+  poly(ctx, col, [[X, y, z], [X, Y, z], [X, Y, Z], [X, y, Z]], 0.45);
+  poly(ctx, col, [[x, Y, z], [X, Y, z], [X, Y, Z], [x, Y, Z]], 0.22);
+  poly(ctx, top || col, [[x, y, Z], [X, y, Z], [X, Y, Z], [x, Y, Z]]);
+}
+
+// Scrolling code on a screen facing the viewer; hot = our clanker, with errors popping up
+function code(ctx, x, y, z, w, h, t, s, hot) {
+  quad(ctx, '#05070c', x, x + w, y, z, z + h);
+  const base = Math.floor(t * (hot ? 5 : 1.5) + s * 7);
+  for (let r = 0; r < h / 0.16 - 1; r++) {
+    const li = base + r;
+    const zz = z + h - 0.16 - r * 0.16;
+    const a = x + 0.08 + hs(li + 9) * 0.25 * w;
+    const typ = hot && hs(li * 3) < 0.2 ? ['syn', 'hal', 'vul'][li % 3] : 0;
+    quad(ctx, typ ? TYPES[typ].col : [C.kw, C.str, '#d7def0', C.num][li % 4], a, Math.min(a + 0.15 + hs(li * 5) * w * 0.6, x + w - 0.08), y, zz, zz + 0.07);
+  }
+}
+
+// Seated dev. front = facing the viewer (far side of the table), else seen from behind
+function dev(ctx, x, y, q, t, front) {
+  const panic = Math.floor(t * 1.5 + q * 2.3) % 5 === 0;
+  const b = panic ? 0.1 : Math.floor(t * 7 + q) % 2 ? 0.05 : 0;
+  const hair = HAIR[q % 5];
+  const sh = SHIRT[q % 8];
+  const sk = SKIN[q % 4];
+  cube(ctx, x + 0.1, y + 0.1, 0, 0.7, 0.7, 1.2, '#2d3436');
+  if (panic) cube(ctx, x - 0.18, y + 0.2, 2, 0.16, 0.2, 1.1, sh);
+  else if (!front) cube(ctx, x - 0.16, y - 0.4, 1.8, 0.16, 0.8, 0.16, sh);
+  cube(ctx, x, y + 0.15, 1.2 + b, 0.9, 0.55, 0.95, sh);
+  cube(ctx, x + 0.2, y + 0.2, 2.15 + b, 0.5, 0.46, 0.5, front ? sk : hair, hair);
+  if (front) {
+    const Y = y + 0.66;
+    const z = 2.15 + b;
+    quad(ctx, hair, x + 0.2, x + 0.7, Y, z + 0.38, z + 0.5);
+    quad(ctx, '#000', x + 0.3, x + 0.37, Y, z + 0.22, z + 0.29);
+    quad(ctx, '#000', x + 0.52, x + 0.59, Y, z + 0.22, z + 0.29);
+    if (panic) quad(ctx, '#400', x + 0.39, x + 0.51, Y, z + 0.05, z + 0.15);
+  }
+  if (panic) cube(ctx, x + 0.92, y + 0.2, 2, 0.16, 0.2, 1.1, sh);
+  else if (!front) cube(ctx, x + 0.9, y - 0.4, 1.8, 0.16, 0.8, 0.16, sh);
+}
+
+function team(ctx, cx, cy, s, t) {
+  const T = 2.4;
+  const ours = !s;
+  const seat = (i) => cx - 2.95 + i * 2.5;
+  // pizza boxes stacked on the floor, behind the table so everything else sorts in front
+  for (let j = 0; j < 1 + s % 3; j++) cube(ctx, cx - 5.4, cy - 2.8 + 0.03 * j, j * 0.15, 1.1, 1.1, 0.14, '#c49a5a', '#d8b27a');
+  const here = (i, k) => (ours ? (k ? i !== 1 : i > 1) : hs(s * 13 + i + k) > 0.25);
+  // far side: devs facing us, their laptop lids toward us
+  for (let i = 0; i < 3; i++) if (here(i, 0)) dev(ctx, seat(i), cy - 2.9, s * 6 + i, t, 1);
+  for (const [lx, ly] of [[-3.8, -1.4], [3.65, -1.4], [-3.8, 1.45], [3.65, 1.45]]) cube(ctx, cx + lx, cy + ly, 0, 0.15, 0.15, T, '#222');
+  cube(ctx, cx - 4, cy - 1.6, T - 0.15, 8, 3.2, 0.15, '#7a5a3c', '#9c7a55');
+  for (let i = 0; i < 3; i++)
+    if (here(i, 0)) {
+      cube(ctx, seat(i), cy - 1.6, T, 0.9, 0.75, 0.05, '#b2bec3');
+      cube(ctx, seat(i), cy - 0.85, T, 0.9, 0.06, 0.7, '#b2bec3');
+      quad(ctx, [C.p1, C.p2, C.vul][(s + i) % 3], seat(i) + 0.38, seat(i) + 0.52, cy - 0.79, T + 0.3, T + 0.44);
+    }
+  // the chaos in the middle: energy drinks, pizza, coffee, post-its
+  for (let k = 0; k < 6; k++) {
+    const r = hs(s * 31 + k * 7);
+    const x = cx - 3.7 + k * 1.25 + r * 0.4;
+    const y = cy - 0.7 + hs(s * 17 + k) * 0.6;
+    const kind = Math.floor(hs(s * 11 + k * 3) * 5);
+    if (kind === 1 && k < 5) {
+      cube(ctx, x, y - 0.05, T, 1.1, 0.05, 1, '#b8894e');
+      cube(ctx, x, y, T, 1.1, 1.1, 0.1, '#c49a5a', '#f2b544');
+      for (let j = 0; j < 4; j++) cube(ctx, x + 0.2 + hs(k + j) * 0.6, y + 0.2 + hs(k * j + 3) * 0.6, T + 0.1, 0.14, 0.14, 0.02, '#c0392b');
+    } else if (kind === 3) {
+      cube(ctx, x, y, T, 0.3, 0.3, 0.35, '#ecf0f1', '#5a3a1a');
+      const [sx, sy] = iso(x + 0.15, y + 0.15, T + 0.5);
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      for (let j = 0; j < 3; j++) ctx.fillRect(sx + Math.sin(t * 3 + j) * 2, sy - j * 7 - ((t * 10) % 7), 2, 4);
+    } else if (kind === 4) cube(ctx, x, y, T, 0.35, 0.35, 0.04, '#fdcb6e');
+    else for (let j = 0; j < 1 + (r > 0.5); j++) cube(ctx, x + j * 0.32, y + j * 0.2, T, 0.24, 0.24, 0.42, CANS[(k + j + s) % 5], '#ccc');
+  }
+  // near side: screens facing us, devs seen from behind
+  for (let i = 0; i < 3; i++) {
+    const x = seat(i);
+    if (ours && i === 1) {
+      // the clanker: a big glowing monitor right in the middle
+      cube(ctx, cx - 0.12, cy + 0.6, T, 0.24, 0.2, 0.5, '#2d3436');
+      cube(ctx, cx - 1.2, cy + 0.66, T + 0.4, 2.4, 0.12, 1.45, Math.floor(t * 4) % 2 ? C.p1 : '#6a8a00');
+      code(ctx, cx - 1.08, cy + 0.78, T + 0.52, 2.16, 1.21, t, 0, 1);
+    } else if (here(i, 5)) {
+      if (hs(s * 5 + i) > 0.5) {
+        cube(ctx, x + 0.33, cy + 0.6, T, 0.24, 0.2, 0.45, '#2d3436');
+        cube(ctx, x - 0.25, cy + 0.66, T + 0.4, 1.4, 0.1, 0.95, '#1e2229');
+        code(ctx, x - 0.17, cy + 0.76, T + 0.48, 1.24, 0.8, t, s + i);
+      } else {
+        cube(ctx, x, cy + 0.7, T, 1, 0.8, 0.05, '#b2bec3');
+        cube(ctx, x, cy + 0.64, T, 1, 0.06, 0.8, '#b2bec3');
+        code(ctx, x + 0.06, cy + 0.7, T + 0.08, 0.88, 0.66, t, s + i);
+      }
+    }
+  }
+  // desktop tower with RGB, then the near devs
+  cube(ctx, cx + 4.15, cy - 0.6, 0, 0.7, 1.5, 1.6, '#1b1f27');
+  quad(ctx, `hsl(${(t * 90 + s * 60) % 360},100%,60%)`, cx + 4.25, cx + 4.75, cy + 0.9, 1.3, 1.36);
+  for (let i = 0; i < 3; i++) if (here(i, 5)) dev(ctx, seat(i), cy + 2.1, s * 6 + i + 3, t);
+}
+
 function renderTitle(ctx, st) {
   const t = st.t;
-  // wall + string lights
-  ctx.fillStyle = '#10152a';
-  ctx.fillRect(0, 80, W, 212);
-  for (let i = 0; i < 40; i++) {
-    ctx.fillStyle = [C.p1, C.p2, C.hal, C.vul][(i + Math.floor(t * 3)) % 4];
-    ctx.fillRect(10 + i * 20, 86 + (i % 2) * 3, 5, 5);
+  ISO.x = 400 + Math.sin(t * 0.3) * 6;
+  // floor tiles
+  ctx.fillStyle = '#0e1220';
+  ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = '#161d30';
+  ctx.beginPath();
+  for (let i = -16; i <= 16; i += 2) {
+    ctx.moveTo(...iso(i, -16, 0));
+    ctx.lineTo(...iso(i, 16, 0));
+    ctx.moveTo(...iso(-16, i, 0));
+    ctx.lineTo(...iso(16, i, 0));
   }
-  // posters
-  box(ctx, 36, 104, 160, 66, '#efe8d4', '#c9bfa3');
-  txt(ctx, 'WIFI: hack-26', 46, 112, '#222', 12, true);
-  txt(ctx, 'clave: platano', 46, 130, '#222', 12);
-  txt(ctx, 'NO DORMIR AQUÍ', 46, 150, '#c0392b', 11, true);
-  box(ctx, 604, 104, 160, 66, '#efe8d4', '#c9bfa3');
-  txt(ctx, 'AGENDA', 614, 112, '#222', 12, true);
-  txt(ctx, 'Pizza ...... ✓', 614, 130, '#222', 12);
-  txt(ctx, 'DEMOS ...... YA', 614, 150, '#c0392b', 12, true);
-
-  // deadline clock, ticking 3x faster than real time
-  const rem = 299 - (Math.floor(t * 3) % 300);
-  const hot = rem < 60;
-  box(ctx, 280, 96, 240, 68, '#1a0508', hot && Math.floor(t * 6) % 2 ? C.white : C.syn);
-  txt(ctx, 'DEADLINE DE LA HACKATÓN', W / 2, 101, C.syn, 11, true, 1);
-  const clock = `${String(Math.floor(rem / 60)).padStart(2, '0')}${Math.floor(t * 2) % 2 ? ':' : ' '}${String(rem % 60).padStart(2, '0')}`;
-  px(ctx, clock, W / 2, 120, 6, hot ? C.white : C.syn, 1);
-
-  // neighbouring teams, stressing out
-  TEAMS.forEach((name, ti) => {
-    const x0 = 30 + ti * 270;
-    for (let j = 0; j < 3; j++) {
-      const q = ti * 3 + j;
-      const dx = x0 + 30 + j * 55;
-      drawDev(ctx, dx, 218, 4, q, t);
-      ctx.fillStyle = '#b2bec3';
-      ctx.fillRect(dx - 2, 238, 28, 21);
-      ctx.fillStyle = '#ffd32a';
-      ctx.fillRect(dx + 10, 245, 5, 5);
-    }
-    ctx.fillStyle = '#4a3424';
-    ctx.fillRect(x0, 258, 200, 8);
-    ctx.fillStyle = '#2a1d14';
-    ctx.fillRect(x0, 266, 200, 20);
-    ctx.fillRect(x0 + 6, 266, 6, 26);
-    ctx.fillRect(x0 + 188, 266, 6, 26);
-    txt(ctx, name, x0 + 100, 270, '#8a7560', 10, true, 1);
+  ctx.stroke();
+  // spotlight on our table
+  const [gx, gy] = iso(0, 0, 0);
+  ctx.fillStyle = 'rgba(198,255,0,.06)';
+  ctx.beginPath();
+  ctx.ellipse(gx, gy, 250, 125, 0, 0, Math.PI * 2);
+  ctx.fill();
+  for (const [x, y, s] of TABLES) team(ctx, x, y, s, t);
+  // vignette: the other teams fade into the dark
+  const [vx, vy] = iso(0, 0, 2.4);
+  const vg = ctx.createRadialGradient(vx, vy, 120, vx, vy, 420);
+  vg.addColorStop(0, 'rgba(7,9,14,0)');
+  vg.addColorStop(1, 'rgba(7,9,14,.85)');
+  ctx.fillStyle = vg;
+  ctx.fillRect(0, 0, W, H);
+  // neighbours panicking
+  TABLES.forEach(([x, y, s, name], ti) => {
+    if (!s) return;
+    const [nx, ny] = iso(x + 4, y + 1.6, 2.4);
+    txt(ctx, name, nx, ny + 4, '#8a7560', 10, true, 1);
     const ph = t / 2.2 + ti * 0.37;
-    if (ph % 1 < 0.8) {
-      const s = PANIC[(Math.floor(ph) * 3 + ti) % PANIC.length];
-      bubble(ctx, s, x0 + 42 + (Math.floor(ph) % 3) * 55, 206, '#fff', '#111');
-    }
+    const [bx, by] = iso(x - 0.5 + (Math.floor(ph) % 3) * 2.5, y - 2.6, 4.4);
+    if (ph % 1 < 0.8) bubble(ctx, PANIC[(Math.floor(ph) * 3 + ti) % PANIC.length], bx, by, '#fff', '#111');
   });
-
-  // floor
-  ctx.fillStyle = '#0b0e18';
-  ctx.fillRect(0, 292, W, H - 292);
-  ctx.fillStyle = '#121828';
-  for (let y = 300; y < H; y += 24) ctx.fillRect(0, y, W, 2);
-
-  // our team: three laptops facing us, the middle one is you (the clanker)
-  for (let i = 0; i < 3; i++) drawScreen(ctx, 120 + i * 200, 300, 160, 90, t, i, i === 1);
-  ctx.fillStyle = '#4a3424';
-  ctx.fillRect(80, 396, 640, 12);
-  ctx.fillStyle = '#ecf0f1';
-  ctx.fillRect(292, 380, 12, 14);
-  ctx.fillStyle = '#00d26a';
-  ctx.fillRect(500, 380, 9, 15);
-  for (let i = 0; i < 3; i++) {
-    ctx.fillStyle = `rgba(255,255,255,${0.25 - i * 0.07})`;
-    ctx.fillRect(296 + Math.sin(t * 3 + i) * 2, 372 - i * 7 - ((t * 10) % 7), 2, 4);
-  }
-  box(ctx, 300, 283, 200, 15, '#05070b', C.p1);
-  txt(ctx, 'TÚ = LA IA DE ESTE EQUIPO', W / 2, 284, C.p1, 11, true, 1);
-  for (let i = 0; i < 3; i++) drawBack(ctx, 185 + i * 200, 406, 5, i, t);
+  // you are the clanker
+  const [lx, ly] = iso(0, 0.72, 5.4);
+  box(ctx, lx - 110, ly - 34, 220, 24, '#05070b', C.p1);
+  txt(ctx, 'TÚ = LA IA DE ESTE EQUIPO', lx, ly - 28, C.p1, 12, true, 1);
+  if (Math.floor(t * 3) % 2) txt(ctx, '▼', lx, ly - 10, C.p1, 14, true, 1);
   const ph = t / 1.8;
-  if (ph % 1 < 0.75) bubble(ctx, OURS[Math.floor(ph) % OURS.length], 222, 432, C.p1, '#05070b', 1);
+  const [ox, oy] = iso(Math.floor(ph) % 2 ? 2.4 : -2.6, 2.3, 3.8);
+  if (ph % 1 < 0.75) bubble(ctx, OURS[Math.floor(ph) % OURS.length], ox, oy, C.p1, '#05070b');
 
   // title over everything
-  ctx.fillStyle = C.bg;
-  ctx.fillRect(0, 0, W, 80);
+  ctx.fillStyle = 'rgba(7,9,14,.88)';
+  ctx.fillRect(0, 0, W, 76);
   const g = Math.floor(t * 2) % 7 === 0 ? 3 : 0;
-  px(ctx, 'FASTER CLANKER', W / 2 - g, 14, 6, C.p2, 1);
-  px(ctx, 'FASTER CLANKER', W / 2 + g, 12, 6, C.p1, 1);
-  txt(ctx, 'Eres la IA del equipo. El código se escribe solo... y se rompe solo.', W / 2, 56, C.white, 13, true, 1);
+  px(ctx, 'FASTER CLANKER', W / 2 - g, 12, 6, C.p2, 1);
+  px(ctx, 'FASTER CLANKER', W / 2 + g, 10, 6, C.p1, 1);
+  txt(ctx, 'Eres la IA del equipo. El código se escribe solo... y se rompe solo.', W / 2, 54, C.white, 13, true, 1);
+  // deadline clock, ticking 3x faster than real time
+  const rem = 299 - (Math.floor(t * 3) % 300);
+  const hot = rem < 60 && Math.floor(t * 6) % 2;
+  box(ctx, 660, 84, 128, 48, '#1a0508', hot ? C.white : C.syn);
+  txt(ctx, 'DEADLINE', 724, 88, C.syn, 10, true, 1);
+  px(ctx, `${String(Math.floor(rem / 60)).padStart(2, '0')}${Math.floor(t * 2) % 2 ? ':' : ' '}${String(rem % 60).padStart(2, '0')}`, 724, 102, 4, hot ? C.white : C.syn, 1);
 
+  ctx.fillStyle = 'rgba(7,9,14,.88)';
+  ctx.fillRect(0, 490, W, 110);
   if (st.highScores.length) {
     const top = st.highScores.slice(0, 3).map((e, i) => `${i + 1}. ${e.tag} ${e.score}`).join('   ');
     txt(ctx, `MEJORES CLANKERS   ${top}`, W / 2, 500, C.hal, 12, true, 1);
@@ -1729,88 +1865,13 @@ function renderTitle(ctx, st) {
   txt(ctx, '1 o 2 jugadores · antes de jugar hay una práctica corta', W / 2, 576, C.muted, 11, false, 1);
 }
 
-function bubble(ctx, s, x, y, bg, fg, left) {
+function bubble(ctx, s, x, y, bg, fg) {
   const w = s.length * 6.7 + 12;
-  const bx = left ? x - 8 : Math.max(4, Math.min(W - w - 4, x - w / 2));
+  const bx = Math.max(4, Math.min(W - w - 4, x - w / 2));
   ctx.fillStyle = bg;
   ctx.fillRect(bx, y - 22, w, 18);
   ctx.fillRect(x - 3, y - 4, 6, 4);
   txt(ctx, s, bx + w / 2, y - 19, fg, 11, true, 1);
-}
-
-// Front-facing dev seated at a table; some type, some panic with hands on head
-function drawDev(ctx, x, y, k, q, t) {
-  const panic = Math.floor(t * 1.5 + q * 2.3) % 5 === 0;
-  const by = panic ? 0 : Math.floor(t * 8 + q) % 2;
-  const sk = SKIN[q % 4];
-  const sh = SHIRT[q % 8];
-  const r = (cx, cy, w, h, c) => {
-    ctx.fillStyle = c;
-    ctx.fillRect(x + cx * k, y + by + cy * k, w * k, h * k);
-  };
-  r(-1, 6, 8, 6, sh);
-  r(0, 0, 6, 6, sk);
-  r(0, 0, 6, 2, HAIR[q % 5]);
-  r(0, 2, 1, 1, HAIR[q % 5]);
-  r(5, 2, 1, 1, HAIR[q % 5]);
-  r(1, 3, 1, 1, '#000');
-  r(4, 3, 1, 1, '#000');
-  if (panic) {
-    r(2, 4, 2, 2, '#400');
-    r(-2, 0, 1, 7, sh);
-    r(7, 0, 1, 7, sh);
-    r(-2, -1, 1, 1, sk);
-    r(7, -1, 1, 1, sk);
-  } else r(2, 5, 2, 0.5, '#400');
-  if (panic || q % 3 === 0) r(6.3, 1 + ((t * 3 + q) % 3), 0.7, 1, '#7fd4ff');
-}
-
-// Our team, seen from behind, typing at the screens
-function drawBack(ctx, x, y, k, q, t) {
-  const by = Math.floor(t * 6 + q) % 3 === 0 ? 1 : 0;
-  const sh = SHIRT[(q + 3) % 8];
-  const r = (cx, cy, w, h, c) => {
-    ctx.fillStyle = c;
-    ctx.fillRect(x + cx * k, y + by + cy * k, w * k, h * k);
-  };
-  r(-3, 7, 12, 9, sh);
-  r(-4, 8, 2, 7, sh);
-  r(8, 8, 2, 7, sh);
-  r(2, 6, 2, 1, SKIN[q % 4]);
-  r(-0.4, 2, 6.8, 2, SKIN[q % 4]);
-  r(0, 0, 6, 6, HAIR[(q + 1) % 5]);
-}
-
-function drawScreen(ctx, x, y, w, h, t, s, ours) {
-  box(ctx, x, y, w, h, '#05070c', ours ? (Math.floor(t * 4) % 2 ? C.p1 : '#6a8a00') : '#3a4258');
-  const base = Math.floor(t * (ours ? 3 : 1.6) + s * 10);
-  for (let r = 0; r < 7; r++) {
-    const li = base + r;
-    const ly = y + 8 + r * 11;
-    // Each screen shows one kind of error: bug, hallucination, vulnerability
-    const typ = hs(li * 3 + s) < 0.16 ? ['syn', 'hal', 'vul'][s] : 0;
-    if (typ) {
-      ctx.globalAlpha = 0.35;
-      ctx.fillStyle = TYPES[typ].col;
-      ctx.fillRect(x + 3, ly - 2, w - 6, 10);
-      ctx.globalAlpha = 1;
-    }
-    let cx = x + 8 + Math.floor(hs(li + 9) * 3) * 8;
-    const segs = 1 + Math.floor(hs(li * 5) * 4);
-    for (let g = 0; g < segs; g++) {
-      const sw = 8 + Math.floor(hs(li * 11 + g) * 28);
-      if (cx + sw > x + w - 8) break;
-      ctx.fillStyle = typ ? TYPES[typ].col : [C.kw, C.str, '#d7def0', C.num][Math.floor(hs(li + g * 3) * 4)];
-      ctx.fillRect(cx, ly, sw, 5);
-      cx += sw + 5;
-    }
-    if (ours && r === 6 && Math.floor(t * 3) % 2) {
-      ctx.fillStyle = C.p1;
-      ctx.fillRect(cx, ly - 1, 6, 7);
-    }
-  }
-  ctx.fillStyle = '#8a94a8';
-  ctx.fillRect(x - 10, y + h, w + 20, 6);
 }
 
 // --- drawing primitives -------------------------------------------------------
@@ -1892,33 +1953,6 @@ const SKULL = ['0111110', '1111111', '1001001', '1001001', '1111111', '0110110',
 function drawSkull(ctx, x, y, k, col) {
   ctx.fillStyle = col;
   for (let r = 0; r < 7; r++) for (let c = 0; c < 7; c++) if (SKULL[r][c] === '1') ctx.fillRect(x + c * k * 2, y + r * k * 2, k * 2, k * 2);
-}
-
-function drawJudge(ctx, x, y, mood, v) {
-  const skin = ['#ffdbac', '#e0ac69', '#8d5524'][v];
-  ctx.fillStyle = mood < 0 ? '#ff8a8a' : skin;
-  ctx.fillRect(x + 4, y + 4, 22, 22);
-  ctx.fillStyle = ['#2f3542', '#c0392b', '#f1c40f'][v];
-  ctx.fillRect(x + 2, y, 26, 7);
-  ctx.fillStyle = '#000';
-  if (mood > 0) {
-    ctx.fillRect(x + 5, y + 11, 20, 4); // sunglasses
-    ctx.fillRect(x + 9, y + 19, 12, 3);
-    ctx.fillRect(x + 8, y + 18, 2, 2);
-    ctx.fillRect(x + 20, y + 18, 2, 2);
-  } else if (mood < 0) {
-    ctx.fillRect(x + 7, y + 9, 5, 2);
-    ctx.fillRect(x + 18, y + 9, 5, 2);
-    ctx.fillRect(x + 9, y + 12, 3, 3);
-    ctx.fillRect(x + 18, y + 12, 3, 3);
-    ctx.fillRect(x + 10, y + 19, 10, 4);
-  } else {
-    ctx.fillRect(x + 9, y + 12, 3, 3);
-    ctx.fillRect(x + 18, y + 12, 3, 3);
-    ctx.fillRect(x + 11, y + 20, 8, 2);
-  }
-  ctx.fillStyle = ['#3742fa', '#2f3542', '#16a085'][v];
-  ctx.fillRect(x + 1, y + 26, 28, 8);
 }
 
 function box(ctx, x, y, w, h, bg, bd) {
